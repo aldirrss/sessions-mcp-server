@@ -7,18 +7,12 @@ to prevent command injection. Inputs are validated before reaching here.
 
 import asyncio
 import json
-import os
 import re
-import shlex
 from pathlib import Path
 from typing import Optional
 
 import config
 
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 def _safe_name(value: str) -> str:
     """Allow only alphanumeric, dash, underscore, dot in names."""
@@ -32,10 +26,7 @@ async def _run(
     cwd: Optional[str] = None,
     timeout: int = config.DOCKER_TIMEOUT,
 ) -> tuple[int, str, str]:
-    """
-    Run a subprocess, return (returncode, stdout, stderr).
-    Never uses shell=True.
-    """
+    """Run a subprocess, return (returncode, stdout, stderr). Never uses shell=True."""
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
@@ -64,15 +55,8 @@ def _compose_dir(project: str) -> str:
     return str(target)
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 async def list_stacks() -> list[dict]:
-    """
-    Return all docker compose stacks known to Docker.
-    Uses `docker compose ls --format json`.
-    """
+    """Return all docker compose stacks known to Docker."""
     code, out, err = await _run("docker", "compose", "ls", "--format", "json", "--all")
     if code != 0:
         raise RuntimeError(f"docker compose ls failed: {err.strip()}")
@@ -83,7 +67,7 @@ async def list_stacks() -> list[dict]:
 
 
 async def stack_ps(project: str) -> list[dict]:
-    """List containers in a compose project (`docker compose ps --format json`)."""
+    """List containers in a compose project."""
     cwd = _compose_dir(project)
     code, out, err = await _run(
         "docker", "compose", "-p", project, "ps", "--format", "json",
@@ -92,7 +76,6 @@ async def stack_ps(project: str) -> list[dict]:
     if code != 0:
         raise RuntimeError(f"docker compose ps failed: {err.strip()}")
 
-    # Docker outputs one JSON object per line (not a JSON array)
     results = []
     for line in out.strip().splitlines():
         line = line.strip()
@@ -184,7 +167,7 @@ async def stack_pull(project: str, service: Optional[str] = None) -> str:
 
 
 async def list_containers(all_containers: bool = False) -> list[dict]:
-    """List Docker containers (`docker ps --format json`)."""
+    """List Docker containers."""
     cmd = ["docker", "ps", "--format", "json"]
     if all_containers:
         cmd.append("-a")
@@ -205,7 +188,7 @@ async def list_containers(all_containers: bool = False) -> list[dict]:
 
 
 async def inspect_container(container: str) -> dict:
-    """Return low-level information about a container (`docker inspect`)."""
+    """Return low-level information about a container."""
     _safe_name(container)
     code, out, err = await _run("docker", "inspect", container)
     if code != 0:
@@ -215,12 +198,8 @@ async def inspect_container(container: str) -> dict:
 
 
 async def container_exec(container: str, command: list[str]) -> str:
-    """
-    Execute a command inside a running container.
-    The command list is passed directly — no shell expansion.
-    """
+    """Execute a command inside a running container. No shell expansion."""
     _safe_name(container)
-    # Validate each command token: only printable ASCII, no shell metacharacters
     for token in command:
         if not re.fullmatch(r'[\x20-\x7E]+', token):
             raise ValueError(f"Invalid characters in command token: '{token}'")
@@ -233,10 +212,7 @@ async def container_exec(container: str, command: list[str]) -> str:
 
 
 async def docker_stats_snapshot() -> list[dict]:
-    """
-    Return a one-shot resource usage snapshot for all running containers.
-    Uses `docker stats --no-stream --format json`.
-    """
+    """Return a one-shot resource usage snapshot for all running containers."""
     code, out, err = await _run(
         "docker", "stats", "--no-stream", "--format", "json"
     )
