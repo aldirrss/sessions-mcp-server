@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY config.py docker_client.py server.py ./
+COPY config.py docker_client.py github_client.py server.py ./
 
 # Non-root user for safety
 RUN useradd -r -u 1000 -g root mcpuser \
