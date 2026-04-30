@@ -102,7 +102,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
 # FastMCP server
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("lm-mcp-ai", lifespan=db.lifespan)
+mcp = FastMCP("lm-mcp-ai")
 
 
 # ---------------------------------------------------------------------------
@@ -888,6 +888,10 @@ if __name__ == "__main__":
     from mcp.server.transport_security import TransportSecurityMiddleware, TransportSecuritySettings
 
     app = mcp.streamable_http_app()
+
+    # Pasang lifespan langsung ke Starlette router — lebih reliable daripada
+    # parameter FastMCP yang tidak selalu dipropagasi oleh streamable_http_app()
+    app.router.lifespan_context = db.lifespan
 
     _disabled = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 

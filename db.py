@@ -97,21 +97,9 @@ async def get_pool() -> asyncpg.Pool:
             min_size=1,
             max_size=5,
             command_timeout=30,
-            # Decode TEXT[] columns as Python lists automatically
-            init=_init_connection,
         )
         _logger.info("PostgreSQL pool created (min=1 max=5)")
     return _pool
-
-
-async def _init_connection(conn: asyncpg.Connection) -> None:
-    """Per-connection initialization: register custom codecs if needed."""
-    await conn.set_type_codec(
-        "text",
-        encoder=str,
-        decoder=str,
-        schema="pg_catalog",
-    )
 
 
 async def close_pool() -> None:
