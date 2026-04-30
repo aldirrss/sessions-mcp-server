@@ -2,6 +2,8 @@ import Link from 'next/link'
 import sql from '@/lib/db'
 import { MessageSquare, BookOpen, FileText, TrendingUp } from 'lucide-react'
 
+export const dynamic = 'force-dynamic'
+
 async function getDashboardData() {
   const [stats, topSkills, recentSessions] = await Promise.all([
     sql`
