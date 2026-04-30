@@ -1,7 +1,7 @@
 services:
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:15
     container_name: lm-mcp-postgres
     restart: unless-stopped
     environment:
