@@ -16,7 +16,7 @@ services:
       LOG_MAX_LINES: "200"
       DOCKER_TIMEOUT: "60"
     group_add:
-      - "docker"          # Allow access to Docker socket
+      - "${DOCKER_GID:-999}"    # GID of docker group on host — check with: stat -c '%g' /var/run/docker.sock
     security_opt:
       - no-new-privileges:true
     read_only: true
