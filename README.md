@@ -27,7 +27,7 @@ accessible from both **claude.ai web** and **Claude Code CLI (local)**.
 │  claude.ai/code (Web)                                       │
 │  Claude Code CLI (Local)                                    │
 │         │                                                   │
-│         ▼  HTTPS + X-API-Key header                        │
+│         ▼  HTTPS + X-API-Key header  (or ?key= param)      │
 │  ┌──────────────────────────────┐                          │
 │  │  nginx / Cloudflare Tunnel   │  ← TLS termination       │
 │  └──────────┬───────────────────┘                          │
@@ -40,8 +40,8 @@ accessible from both **claude.ai web** and **Claude Code CLI (local)**.
 │             │  Docker socket (read-only)                    │
 │  ┌──────────▼───────────────────┐                          │
 │  │  Docker Engine on VPS        │                          │
-│  │  /opt/stacks/                │                          │
-│  │    ├── odoo/                 │                          │
+│  │  /opt/                       │                          │
+│  │    ├── odoo-lema/            │                          │
 │  │    ├── monitoring/           │                          │
 │  │    └── ...                   │                          │
 │  └──────────────────────────────┘                          │
@@ -86,14 +86,24 @@ git clone https://github.com/your-org/lm-docker-mcp.git /opt/lm-docker-mcp
 cd /opt/lm-docker-mcp
 ```
 
-### 3. Create compose projects base directory
+### 3. Identify your compose projects base directory
+
+This server discovers compose projects by scanning a base directory.
+Check where your existing `docker-compose.yml` files live:
 
 ```bash
-sudo mkdir -p /opt/stacks
-# Example: your existing compose projects go here
-# /opt/stacks/odoo/docker-compose.yml
-# /opt/stacks/monitoring/docker-compose.yml
+find /opt /home /root -name "docker-compose.yml" 2>/dev/null
 ```
+
+Example output:
+```
+/opt/odoo-lema/docker-compose.yml
+/opt/monitoring/docker-compose.yml
+/opt/n8n/docker-compose.yml
+```
+
+In this case, `COMPOSE_BASE_DIR=/opt` — each subdirectory is a project.
+Set this value in `.env` in the next step.
 
 ### 4. Configure environment
 
@@ -101,12 +111,26 @@ sudo mkdir -p /opt/stacks
 cp .env.example .env
 ```
 
-Generate a secure API key and set it:
+Get the numeric GID of the Docker socket group (needed for `group_add`):
+
+```bash
+stat -c '%g' /var/run/docker.sock
+# Example output: 988
+```
+
+Generate a secure API key and edit `.env`:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
-# Copy the output and paste it into .env as MCP_API_KEY
 nano .env
+```
+
+Minimal `.env` to fill in:
+
+```env
+MCP_API_KEY=<paste your generated key here>
+COMPOSE_BASE_DIR=/opt          # adjust to match your setup
+DOCKER_GID=988                 # use the output from stat above
 ```
 
 ### 5. Build and start
@@ -122,7 +146,7 @@ docker compose ps
 docker compose logs -f
 ```
 
-The server listens on `127.0.0.1:8765` by default (loopback only, not exposed to the internet directly).
+The server listens on `127.0.0.1:8765` by default (loopback only, not exposed directly).
 
 ---
 
@@ -138,6 +162,7 @@ All configuration is via environment variables (`.env` file):
 | `COMPOSE_BASE_DIR` | No | `/opt/stacks` | Root directory containing compose project subdirs |
 | `LOG_MAX_LINES` | No | `200` | Hard cap on log lines returned per request |
 | `DOCKER_TIMEOUT` | No | `60` | Docker CLI subprocess timeout in seconds |
+| `DOCKER_GID` | No | `999` | Numeric GID of the `docker` group on host |
 
 ---
 
@@ -145,6 +170,16 @@ All configuration is via environment variables (`.env` file):
 
 The MCP server must be accessible over **HTTPS** for claude.ai web to connect.
 Choose one of the options below.
+
+> **Critical for all options**: nginx **must** rewrite the `Host` header to
+> `localhost` before passing the request to the MCP server. Without this, the
+> FastMCP `TransportSecurityMiddleware` rejects every request with
+> `421 Misdirected Request — Invalid Host header`.
+>
+> Always include:
+> ```nginx
+> proxy_set_header   Host "localhost";
+> ```
 
 | Option | Nginx on VPS | certbot | cloudflared on VPS | Open port |
 |--------|:---:|:---:|:---:|:---:|
@@ -174,7 +209,7 @@ server {
     location /mcp {
         proxy_pass         http://127.0.0.1:8765;
         proxy_http_version 1.1;
-        proxy_set_header   Host $host;
+        proxy_set_header   Host "localhost";        # REQUIRED — rewrites Host for MCP transport security
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   Upgrade $http_upgrade;
         proxy_set_header   Connection "upgrade";
@@ -245,7 +280,7 @@ server {
     location /mcp {
         proxy_pass         http://127.0.0.1:8765;
         proxy_http_version 1.1;
-        proxy_set_header   Host $host;
+        proxy_set_header   Host "localhost";        # REQUIRED — rewrites Host for MCP transport security
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   CF-Connecting-IP $http_cf_connecting_ip;
         proxy_read_timeout 300s;
@@ -294,6 +329,8 @@ credentials-file: /root/.cloudflared/<tunnel-id>.json
 ingress:
   - hostname: mcp.yourdomain.com
     service: http://127.0.0.1:8765
+    originRequest:
+      httpHostHeader: "localhost"   # REQUIRED — same as proxy_set_header Host "localhost" in nginx
   - service: http_status:404
 ```
 
@@ -327,6 +364,9 @@ Go to: **claude.ai → Settings → Connectors → Add custom connector**
 | **OAuth Client Secret** | *(leave empty)* |
 
 > Replace `YOUR_MCP_API_KEY` with the value of `MCP_API_KEY` from your `.env` file.
+>
+> **Important**: The URL must include the `/mcp` path. A URL without the path
+> (e.g. `https://mcp.yourdomain.com?key=...`) will not work.
 
 Click **Add**. Claude will immediately list the available Docker tools.
 
@@ -350,7 +390,17 @@ For Cloudflare, go to **Logs → Log Retention** and disable if needed.
 
 ### Option A — Remote HTTP (same MCP server on VPS)
 
-Add to your local `~/.claude/claude_mcp_config.json`:
+This connects your local Claude Code CLI directly to the MCP server running on the VPS.
+No local Python environment needed.
+
+Add the server using the CLI:
+
+```bash
+claude mcp add --transport http docker-vps https://mcp.yourdomain.com/mcp \
+  --header "X-API-Key: your-mcp-api-key-here"
+```
+
+Or add it manually to `~/.claude/claude_mcp_config.json`:
 
 ```json
 {
@@ -372,6 +422,8 @@ Verify connection:
 claude mcp list
 ```
 
+You should see `docker-vps` listed as connected.
+
 ### Option B — Run server locally via stdio (for local Docker only)
 
 If you want to manage Docker on your local machine (not the VPS):
@@ -382,7 +434,15 @@ pip install -r requirements.txt
 cp .env.example .env && nano .env
 ```
 
-Add to `~/.claude/claude_mcp_config.json`:
+Add via CLI:
+
+```bash
+claude mcp add docker-local --command python --args /path/to/lm-docker-mcp/server.py \
+  --env MCP_API_KEY=any-value-for-stdio \
+  --env COMPOSE_BASE_DIR=/your/local/stacks
+```
+
+Or add manually to `~/.claude/claude_mcp_config.json`:
 
 ```json
 {
@@ -400,7 +460,7 @@ Add to `~/.claude/claude_mcp_config.json`:
 }
 ```
 
-> For stdio mode, edit `server.py` last line:
+> For stdio mode, the last line of `server.py` must be changed to:
 > ```python
 > mcp.run()   # stdio (no transport argument)
 > ```
@@ -429,8 +489,8 @@ Add to `~/.claude/claude_mcp_config.json`:
 
 - **No `shell=True`** — all subprocess calls use `asyncio.create_subprocess_exec`;
   command injection via tool parameters is not possible.
-- **API key middleware** — every HTTP request must carry the correct `X-API-Key` header;
-  missing or wrong keys receive `401 Unauthorized`.
+- **API key middleware** — every HTTP request to `/mcp` must carry the correct
+  `X-API-Key` header or `?key=` query param; missing or wrong keys receive `401 Unauthorized`.
 - **Docker socket is read-only** in the compose mount (`/var/run/docker.sock:ro`);
   the container cannot start new Docker daemons.
 - **Path traversal prevention** — `COMPOSE_BASE_DIR` is resolved and all project paths
@@ -440,6 +500,10 @@ Add to `~/.claude/claude_mcp_config.json`:
 - **Non-root container** — the MCP server process runs as `mcpuser` (UID 1000).
 - **Bind loopback** — the container port is bound to `127.0.0.1` only; TLS and auth
   are handled by nginx / Cloudflare in front of it.
+- **TransportSecurityMiddleware** — FastMCP includes DNS rebinding protection that
+  validates the `Host` header. This server monkey-patches `validate_request` to always
+  return `None` (accept), since nginx enforces TLS and API key auth handles all
+  authentication. This is safe for reverse-proxy deployments.
 
 ---
 
@@ -452,21 +516,72 @@ docker compose logs mcp
 # Check for: missing MCP_API_KEY, port already in use
 ```
 
+### `Unable to find group docker` on container start
+
+The `group_add` entry in `docker-compose.yml` must use a **numeric GID**, not the
+group name `docker` (which does not exist inside the container).
+
+Get the GID on the VPS host:
+
+```bash
+stat -c '%g' /var/run/docker.sock
+# Example: 988
+```
+
+Set it in `.env`:
+
+```env
+DOCKER_GID=988
+```
+
+Then rebuild:
+
+```bash
+docker compose up -d --build
+```
+
 ### 401 Unauthorized from claude.ai
 
-- Confirm the `X-API-Key` header value exactly matches `MCP_API_KEY` in `.env`.
+- Check that the URL includes the `/mcp` path: `https://mcp.yourdomain.com/mcp?key=...`
+- Confirm the key in the URL exactly matches `MCP_API_KEY` in `.env`.
 - Rebuild after changing `.env`: `docker compose up -d --build`.
+
+### 421 Misdirected Request — Invalid Host header
+
+FastMCP includes `TransportSecurityMiddleware` that rejects requests whose `Host`
+header does not match an allowed list. In reverse-proxy deployments the Host header
+is the public domain (e.g. `mcp.yourdomain.com`), which is rejected by default.
+
+**Fix**: ensure nginx rewrites the Host header to `localhost`:
+
+```nginx
+proxy_set_header   Host "localhost";
+```
+
+This is already included in the nginx configs in this README. If you configured nginx
+independently and omitted this line, add it and reload:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+If you are using Cloudflare Tunnel instead of nginx, add `httpHostHeader: "localhost"`
+to the ingress rule in `~/.cloudflared/config.yml`.
 
 ### "Project directory not found"
 
-- Make sure the compose project directory exists under `COMPOSE_BASE_DIR` on the VPS.
-- The volume mount in `docker-compose.yml` must match: `/opt/stacks:/opt/stacks:ro`.
+- Run `docker compose logs mcp` to see the exact path being searched.
+- Make sure `COMPOSE_BASE_DIR` in `.env` points to the parent of your compose project
+  directories (e.g. `/opt`, not `/opt/odoo-lema`).
+- The volume mount in `docker-compose.yml` must expose that directory into the
+  container: `/opt:/opt:ro`.
 
-### docker_exec returns permission denied
+### `docker_exec` returns permission denied
 
 - The `mcpuser` inside the container calls `docker exec` via the socket.
-- Ensure the `group_add: ["docker"]` entry is present in `docker-compose.yml`
-  and that the host `docker` group GID matches.
+- Ensure `DOCKER_GID` in `.env` matches the output of `stat -c '%g' /var/run/docker.sock`
+  on the VPS host, and that `group_add: ["${DOCKER_GID:-999}"]` is present in
+  `docker-compose.yml`.
 
 ### Cloudflare Tunnel shows offline
 
@@ -478,8 +593,16 @@ sudo journalctl -u cloudflared -n 50
 ### Test the endpoint manually
 
 ```bash
+# Using X-API-Key header (Claude Code CLI style)
 curl -s -X POST https://mcp.yourdomain.com/mcp \
   -H "X-API-Key: your-key" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq .
+
+# Using ?key= query param (claude.ai web style)
+curl -s -X POST "https://mcp.yourdomain.com/mcp?key=your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq .
 ```
+
+A successful response will include a `result.tools` array listing all 11 tools.
