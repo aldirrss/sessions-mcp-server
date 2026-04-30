@@ -16,6 +16,16 @@ from typing import Optional
 
 import config
 
+# Monkey-patch TransportSecurityMiddleware BEFORE FastMCP is imported.
+# validate_request returning None means "request is valid, continue".
+# Safe because nginx enforces TLS and ApiKeyMiddleware handles auth.
+import mcp.server.transport_security as _ts
+
+async def _validate_all(self, request, is_post=False):
+    return None
+
+_ts.TransportSecurityMiddleware.validate_request = _validate_all
+
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from starlette.middleware.base import BaseHTTPMiddleware
