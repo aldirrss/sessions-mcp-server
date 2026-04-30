@@ -887,11 +887,24 @@ if __name__ == "__main__":
 
     from mcp.server.transport_security import TransportSecurityMiddleware, TransportSecuritySettings
 
+    from contextlib import asynccontextmanager
+
     app = mcp.streamable_http_app()
 
-    # Pasang lifespan langsung ke Starlette router — lebih reliable daripada
-    # parameter FastMCP yang tidak selalu dipropagasi oleh streamable_http_app()
-    app.router.lifespan_context = db.lifespan
+    # Simpan lifespan asli FastMCP — dia menginisialisasi StreamableHTTPSessionManager
+    # task_group yang wajib ada sebelum request masuk.
+    # Kita TIDAK boleh menggantinya, hanya membungkusnya agar DB init juga jalan.
+    _fastmcp_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def _combined_lifespan(_app):
+        await db.init_schema()
+        _logger.info("Session store (PostgreSQL) ready")
+        async with _fastmcp_lifespan(_app):
+            yield
+        await db.close_pool()
+
+    app.router.lifespan_context = _combined_lifespan
 
     _disabled = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
