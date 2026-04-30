@@ -33,6 +33,7 @@ from starlette.responses import Response
 import db
 from tools.docker import register as register_docker
 from tools.sessions import register as register_sessions
+from tools.skills import register as register_skills
 
 # ---------------------------------------------------------------------------
 # Logging — use stderr so stdout stays clean for MCP protocol
@@ -103,6 +104,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
 mcp = FastMCP("lm-mcp-ai")
 register_docker(mcp)
 register_sessions(mcp)
+register_skills(mcp)
 
 
 # ---------------------------------------------------------------------------
