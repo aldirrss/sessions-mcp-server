@@ -1,25 +1,55 @@
 services:
+
+  postgres:
+    image: postgres:15
+    container_name: lm-mcp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-mcp_sessions}
+      POSTGRES_USER:     ${POSTGRES_USER:-mcp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"  # Loopback only — akses via SSH tunnel dari local
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-mcp_user}", "-d", "${POSTGRES_DB:-mcp_sessions}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
   mcp:
     build: .
     container_name: lm-mcp-ai
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
-      - "127.0.0.1:8765:8765"      # Bind loopback only — expose via reverse proxy (nginx/Cloudflare)
+      - "127.0.0.1:8765:8765"      # Bind loopback only — expose via reverse proxy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # Read-only Docker socket
-      - /opt:/opt:ro                                   # Compose project dirs (read-only mount)
+      - /opt:/opt:ro                                   # Compose project dirs (read-only)
     environment:
-      MCP_API_KEY: ${MCP_API_KEY}
-      MCP_HOST: "0.0.0.0"
-      MCP_PORT: "8765"
+      MCP_API_KEY:      ${MCP_API_KEY}
+      MCP_HOST:         "0.0.0.0"
+      MCP_PORT:         "8765"
       MCP_EXTERNAL_HOST: ${MCP_EXTERNAL_HOST:-mcp.lemacore.com}
       COMPOSE_BASE_DIR: /opt
-      LOG_MAX_LINES: "200"
-      DOCKER_TIMEOUT: "60"
+      LOG_MAX_LINES:    "200"
+      DOCKER_TIMEOUT:   "60"
+      DATABASE_URL:     postgresql://${POSTGRES_USER:-mcp_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mcp_sessions}
     group_add:
-      - "${DOCKER_GID:-999}"    # GID of docker group on host — check with: stat -c '%g' /var/run/docker.sock
+      - "${DOCKER_GID:-999}"    # GID of docker group — check: stat -c '%g' /var/run/docker.sock
     security_opt:
       - no-new-privileges:true
     read_only: true
     tmpfs:
       - /tmp
+
+volumes:
+  pg_data:
+    driver: local
