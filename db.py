@@ -116,6 +116,101 @@ _DDL_STEPS = [
         END IF;
     END; $$
     """,
+
+    # -----------------------------------------------------------------------
+    # Skills library
+    # -----------------------------------------------------------------------
+
+    # 9. Tabel skills
+    """
+    CREATE TABLE IF NOT EXISTS skills (
+        slug        TEXT        PRIMARY KEY,
+        name        TEXT        NOT NULL,
+        summary     TEXT        NOT NULL DEFAULT '',
+        content     TEXT        NOT NULL,
+        source      TEXT        NOT NULL DEFAULT 'manual',
+        category    TEXT,
+        tags        TEXT[]      NOT NULL DEFAULT '{}',
+        search_vec  TSVECTOR,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    # 10. Tabel skill_versions — history konten sebelum diubah
+    """
+    CREATE TABLE IF NOT EXISTS skill_versions (
+        id          BIGSERIAL   PRIMARY KEY,
+        slug        TEXT        NOT NULL,
+        content     TEXT        NOT NULL,
+        changed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    # 11. Tabel session_skills — junction many-to-many
+    """
+    CREATE TABLE IF NOT EXISTS session_skills (
+        session_id  TEXT        NOT NULL
+                        REFERENCES sessions(session_id) ON DELETE CASCADE,
+        skill_slug  TEXT        NOT NULL
+                        REFERENCES skills(slug) ON DELETE CASCADE,
+        used_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (session_id, skill_slug)
+    )
+    """,
+
+    # 12. Indexes untuk skills
+    "CREATE INDEX IF NOT EXISTS idx_skills_search   ON skills USING GIN (search_vec)",
+    "CREATE INDEX IF NOT EXISTS idx_skills_tags     ON skills USING GIN (tags)",
+    "CREATE INDEX IF NOT EXISTS idx_skills_category ON skills (category)",
+    "CREATE INDEX IF NOT EXISTS idx_skills_updated  ON skills (updated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_skill_versions_slug ON skill_versions (slug, changed_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_session_skills_session ON session_skills (session_id, used_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_session_skills_slug    ON session_skills (skill_slug, used_at DESC)",
+
+    # 13. Fungsi: isi search_vec untuk skills dari name + summary + content + tags
+    """
+    CREATE OR REPLACE FUNCTION fn_skills_search_vec()
+    RETURNS TRIGGER LANGUAGE plpgsql AS $$
+    BEGIN
+        NEW.search_vec := to_tsvector('english',
+            coalesce(NEW.name,    '') || ' ' ||
+            coalesce(NEW.summary, '') || ' ' ||
+            coalesce(NEW.content, '') || ' ' ||
+            array_to_string(NEW.tags, ' ')
+        );
+        RETURN NEW;
+    END;
+    $$
+    """,
+
+    # 14. Trigger search_vec untuk skills
+    """
+    DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'trg_skills_search_vec'
+        ) THEN
+            CREATE TRIGGER trg_skills_search_vec
+                BEFORE INSERT OR UPDATE OF name, summary, content, tags ON skills
+                FOR EACH ROW
+                EXECUTE FUNCTION fn_skills_search_vec();
+        END IF;
+    END; $$
+    """,
+
+    # 15. Trigger updated_at untuk skills
+    """
+    DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'trg_skills_updated_at'
+        ) THEN
+            CREATE TRIGGER trg_skills_updated_at
+                BEFORE UPDATE ON skills
+                FOR EACH ROW
+                EXECUTE FUNCTION fn_touch_updated_at();
+        END IF;
+    END; $$
+    """,
 ]
 
 

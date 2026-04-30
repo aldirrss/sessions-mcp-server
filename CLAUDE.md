@@ -1,0 +1,79 @@
+# lm-mcp-ai — Claude Behavior Instructions
+
+This project uses a custom MCP server (`lm-mcp-ai`) that provides Docker management
+and session continuity tools. Follow the rules below in every conversation.
+
+---
+
+## Session Management
+
+At the start of every conversation:
+1. Call `session_list` to see available sessions.
+2. If the user mentions a project, feature, or topic that matches a session ID or title,
+   call `session_read` with that session ID to restore full context before responding.
+
+During the conversation:
+- Call `session_append` to log important decisions, blockers, or progress updates.
+- Call `session_write` before ending a conversation that has unfinished work,
+  saving the current state so it can be resumed from any client.
+
+---
+
+## Skill Tracking
+
+Whenever you invoke a skill (`/skill-name`), immediately call `skill_track` with:
+- `session_id`: the active session ID (from session_list or session context)
+- `skill_slug`: the skill name without the leading slash (e.g. `mcp-builder`)
+
+### Rules
+- Track every skill invocation, including: `/mcp-builder`, `/brainstorming`,
+  `/docker`, `/postgresql-best-practices`, `/python`, `/ci-cd-best-practices`, etc.
+- First use of a skill in a session → `skill_track` auto-appends a compact note.
+  You do NOT need to manually append a note for skill activation.
+- Subsequent uses of the same skill in the same session → silently idempotent,
+  no duplicate note is created.
+- If no active session exists yet, create one with `session_write` first,
+  then call `skill_track`.
+
+### Example flow
+```
+User: help me build an MCP server  /mcp-builder
+→ You invoke /mcp-builder skill
+→ Immediately call: skill_track(session_id="current-session", skill_slug="mcp-builder")
+→ skill_track auto-appends: "Skill activated: mcp-builder — MCP Server Development Guide"
+→ Continue with the skill's instructions
+```
+
+---
+
+## Skill Library
+
+The MCP server maintains a skill library in PostgreSQL. You can:
+- `skill_list` — see all available skills and their summaries
+- `skill_read <slug>` — load a skill's full Markdown content
+- `skill_search <query>` — find skills by keyword
+- `skill_recommend <session_id>` — get suggestions based on session tags
+
+When a user asks "what skills are available?" or "do you have a skill for X?",
+use `skill_search` or `skill_list` instead of relying on memory.
+
+---
+
+## MCP Server Tools Reference
+
+### Docker (read-only)
+`docker_list_stacks`, `docker_stack_ps`, `docker_stack_logs`,
+`docker_list_containers`, `docker_inspect_container`, `docker_stats`
+
+### Docker (write)
+`docker_stack_up`, `docker_stack_down`, `docker_stack_restart`,
+`docker_stack_pull`, `docker_exec`
+
+### Sessions
+`session_write`, `session_read`, `session_list`, `session_append`,
+`session_delete`, `session_search`
+
+### Skills
+`skill_write`, `skill_read`, `skill_list`, `skill_search`, `skill_delete`,
+`skill_sync`, `skill_track`, `session_skills_list`, `skill_sessions_list`,
+`skill_stats`, `skill_recommend`
