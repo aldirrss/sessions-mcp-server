@@ -4,8 +4,6 @@ All sensitive values must be set via .env or system env — never hardcoded.
 """
 
 import os
-import secrets
-from typing import Optional
 
 
 def _require(key: str) -> str:
@@ -23,12 +21,9 @@ MCP_PORT: int = int(os.environ.get("MCP_PORT", "8765"))
 MCP_API_KEY: str = _require("MCP_API_KEY")
 
 # External hostname used by reverse proxy (Cloudflare Tunnel / nginx).
-# Added to MCP transport security allowlist so Host header is accepted.
-# Comma-separated if multiple: "mcp.lemacore.com,mcp2.lemacore.com"
 MCP_EXTERNAL_HOST: str = os.environ.get("MCP_EXTERNAL_HOST", "")
 
 # Docker Compose projects base directory on this host
-# Each subdirectory is treated as a separate compose project.
 COMPOSE_BASE_DIR: str = os.environ.get("COMPOSE_BASE_DIR", "/opt/stacks")
 
 # Hard limit on log lines returned per request
@@ -36,3 +31,12 @@ LOG_MAX_LINES: int = int(os.environ.get("LOG_MAX_LINES", "200"))
 
 # Timeout (seconds) for docker CLI subprocesses
 DOCKER_TIMEOUT: int = int(os.environ.get("DOCKER_TIMEOUT", "60"))
+
+# GitHub personal access token (classic or fine-grained)
+# Required scopes: repo (full), workflow (for Actions)
+# Optional — if not set, GitHub tools will return an error when called
+GITHUB_TOKEN: str = os.environ.get("GITHUB_TOKEN", "")
+
+# Default GitHub owner/org — used when repo is passed without owner prefix
+# Example: "aldirrss" or "lema-core"
+GITHUB_DEFAULT_OWNER: str = os.environ.get("GITHUB_DEFAULT_OWNER", "")

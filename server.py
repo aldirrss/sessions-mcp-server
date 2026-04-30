@@ -21,6 +21,14 @@ import config
 # Safe because nginx enforces TLS and ApiKeyMiddleware handles auth.
 import mcp.server.transport_security as _ts
 
+# ===========================================================================
+# GitHub Tools
+# Requires: GITHUB_TOKEN and GITHUB_DEFAULT_OWNER in .env
+# ===========================================================================
+
+import github_client as gh
+from typing import Optional as Opt
+
 async def _validate_all(self, request, is_post=False):
     return None
 
@@ -617,7 +625,6 @@ async def docker_exec(params: ExecInput) -> str:
     except Exception as e:
         return _error(str(e))
 
-
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -676,3 +683,508 @@ if __name__ == "__main__":
         host=config.MCP_HOST,
         port=config.MCP_PORT,
     )
+
+# ---------------------------------------------------------------------------
+# Pydantic models for GitHub tools
+# ---------------------------------------------------------------------------
+ 
+class GHRepoInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    owner: Opt[str] = Field(default=None, description="GitHub owner (user or org). Falls back to GITHUB_DEFAULT_OWNER if omitted.")
+    repo: str = Field(..., description="Repository name (without owner prefix).", min_length=1, max_length=100)
+ 
+ 
+class GHBranchInput(GHRepoInput):
+    branch: str = Field(..., description="Branch name.", min_length=1, max_length=255)
+ 
+ 
+class GHFileInput(GHRepoInput):
+    path: str = Field(..., description="File path within the repo (e.g. 'src/main.py').", min_length=1)
+    ref: Opt[str] = Field(default=None, description="Branch, tag, or commit SHA to read from. Defaults to default branch.")
+ 
+ 
+class GHCreateBranchInput(GHRepoInput):
+    new_branch: str = Field(..., description="Name of the new branch to create.", min_length=1, max_length=255)
+    from_branch: str = Field(default="main", description="Source branch to branch off from.")
+ 
+ 
+class GHCreateFileInput(GHRepoInput):
+    path: str = Field(..., description="File path to create or update (e.g. 'docs/notes.md').")
+    content: str = Field(..., description="Full file content as a UTF-8 string.")
+    message: str = Field(..., description="Commit message.", min_length=1, max_length=500)
+    branch: str = Field(default="main", description="Target branch for the commit.")
+    sha: Opt[str] = Field(default=None, description="Current file SHA — required when updating an existing file.")
+ 
+ 
+class GHPRCreateInput(GHRepoInput):
+    title: str = Field(..., description="Pull request title.", min_length=1, max_length=255)
+    head: str = Field(..., description="Source branch (the branch with your changes).")
+    base: str = Field(default="main", description="Target branch to merge into.")
+    body: str = Field(default="", description="PR description / body text.")
+    draft: bool = Field(default=False, description="Create as draft PR.")
+ 
+ 
+class GHPRMergeInput(GHRepoInput):
+    pr_number: int = Field(..., description="Pull request number.", ge=1)
+    method: str = Field(default="squash", description="Merge method: 'merge', 'squash', or 'rebase'.")
+ 
+ 
+class GHIssueCreateInput(GHRepoInput):
+    title: str = Field(..., description="Issue title.", min_length=1, max_length=255)
+    body: str = Field(default="", description="Issue body / description.")
+    labels: Opt[list[str]] = Field(default=None, description="List of label names to apply.")
+ 
+ 
+class GHListCommitsInput(GHRepoInput):
+    branch: Opt[str] = Field(default=None, description="Filter commits by branch. Defaults to default branch.")
+    per_page: int = Field(default=20, description="Number of commits to return.", ge=1, le=100)
+ 
+ 
+class GHWorkflowRunInput(GHRepoInput):
+    workflow_id: Opt[str] = Field(default=None, description="Workflow filename (e.g. 'deploy.yml') or numeric ID. Omit to list all runs.")
+    per_page: int = Field(default=10, description="Number of runs to return.", ge=1, le=50)
+ 
+ 
+class GHTriggerWorkflowInput(GHRepoInput):
+    workflow_id: str = Field(..., description="Workflow filename (e.g. 'deploy.yml') or numeric ID.")
+    ref: str = Field(default="main", description="Branch or tag to run the workflow on.")
+    inputs: Opt[dict] = Field(default=None, description="Workflow dispatch inputs as key-value pairs.")
+ 
+ 
+class GHListDirInput(GHRepoInput):
+    path: str = Field(default="", description="Directory path within the repo. Empty string = root.")
+    ref: Opt[str] = Field(default=None, description="Branch, tag, or commit SHA. Defaults to default branch.")
+ 
+# ---------------------------------------------------------------------------
+# Tools — Repository
+# ---------------------------------------------------------------------------
+ 
+@mcp.tool(
+    name="github_list_repos",
+    annotations={"title": "List GitHub Repositories", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_repos(
+    owner: Opt[str] = None,
+    type: str = "all",
+    per_page: int = 30,
+) -> str:
+    """
+    List repositories for a GitHub user or organization.
+ 
+    Args:
+        owner: GitHub username or org name. Falls back to GITHUB_DEFAULT_OWNER if omitted.
+        type: Filter by 'all', 'public', 'private', 'forks', 'sources', 'member'.
+        per_page: Number of repos to return (default 30).
+    """
+    try:
+        repos = await gh.list_repos(owner=owner, type=type, per_page=per_page)
+        if not repos:
+            return "No repositories found."
+        lines = ["| Repo | Visibility | Language | Updated | Stars |",
+                 "|------|-----------|----------|---------|-------|"]
+        for r in repos:
+            lines.append(
+                f"| [{r['name']}]({r['html_url']}) "
+                f"| {'🔒 private' if r.get('private') else '🌐 public'} "
+                f"| {r.get('language') or '-'} "
+                f"| {r.get('updated_at', '')[:10]} "
+                f"| ⭐ {r.get('stargazers_count', 0)} |"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+# ---------------------------------------------------------------------------
+# Tools — Branches
+# ---------------------------------------------------------------------------
+ 
+@mcp.tool(
+    name="github_list_branches",
+    annotations={"title": "List GitHub Branches", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_branches(params: GHRepoInput) -> str:
+    """List all branches in a repository."""
+    try:
+        branches = await gh.list_branches(params.owner, params.repo)
+        if not branches:
+            return f"No branches found in '{params.repo}'."
+        lines = [f"## Branches in {params.repo}", ""]
+        for b in branches:
+            protected = "🔒" if b.get("protected") else "  "
+            lines.append(f"- {protected} `{b['name']}` — SHA: `{b['commit']['sha'][:7]}`")
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_create_branch",
+    annotations={"title": "Create GitHub Branch", "readOnlyHint": False, "destructiveHint": False},
+)
+async def github_create_branch(params: GHCreateBranchInput) -> str:
+    """
+    Create a new branch from an existing branch.
+ 
+    Args:
+        params.new_branch: Name of the branch to create.
+        params.from_branch: Source branch (default: 'main').
+    """
+    try:
+        result = await gh.create_branch(params.owner, params.repo, params.new_branch, params.from_branch)
+        sha = result.get("object", {}).get("sha", "")[:7]
+        return f"✅ Branch `{params.new_branch}` created from `{params.from_branch}` (SHA: `{sha}`) in `{params.repo}`."
+    except Exception as e:
+        return _error(str(e))
+ 
+# ---------------------------------------------------------------------------
+# Tools — Files
+# ---------------------------------------------------------------------------
+ 
+@mcp.tool(
+    name="github_read_file",
+    annotations={"title": "Read File from GitHub", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_read_file(params: GHFileInput) -> str:
+    """
+    Read the content of a file from a GitHub repository.
+ 
+    Args:
+        params.path: File path within the repo (e.g. 'server.py').
+        params.ref: Branch, tag, or commit SHA. Defaults to default branch.
+    """
+    try:
+        result = await gh.get_file(params.owner, params.repo, params.path, params.ref)
+        ref_note = f" @ `{params.ref}`" if params.ref else ""
+        header = f"## `{result['path']}`{ref_note} ({result['size']} bytes)\n\n"
+        return header + f"```\n{result['content']}\n```"
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_list_directory",
+    annotations={"title": "List Directory in GitHub Repo", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_directory(params: GHListDirInput) -> str:
+    """
+    List files and directories at a given path in a repository.
+ 
+    Args:
+        params.path: Directory path (empty = root).
+        params.ref: Branch, tag, or commit SHA.
+    """
+    try:
+        items = await gh.list_directory(params.owner, params.repo, params.path, params.ref)
+        if not items:
+            return "Directory is empty."
+        lines = [f"## `{params.repo}/{params.path or ''}`", ""]
+        dirs = [i for i in items if i["type"] == "dir"]
+        files = [i for i in items if i["type"] == "file"]
+        for d in sorted(dirs, key=lambda x: x["name"]):
+            lines.append(f"📁 `{d['name']}/`")
+        for f in sorted(files, key=lambda x: x["name"]):
+            size = f"{f['size']:,} B" if f["size"] else "-"
+            lines.append(f"📄 `{f['name']}` ({size})")
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_write_file",
+    annotations={"title": "Write File to GitHub", "readOnlyHint": False, "destructiveHint": False},
+)
+async def github_write_file(params: GHCreateFileInput) -> str:
+    """
+    Create or update a file in a GitHub repository (creates a commit).
+ 
+    For updates, provide the current file SHA (get it via github_read_file first).
+    For new files, leave sha empty.
+ 
+    Args:
+        params.path: File path in the repo.
+        params.content: Full file content.
+        params.message: Commit message.
+        params.branch: Target branch (default: 'main').
+        params.sha: Current file SHA (required for updates, omit for new files).
+    """
+    try:
+        result = await gh.create_or_update_file(
+            params.owner, params.repo, params.path,
+            params.content, params.message, params.branch, params.sha,
+        )
+        action = "Updated" if params.sha else "Created"
+        commit_sha = result.get("commit", {}).get("sha", "")[:7]
+        url = result.get("content", {}).get("html_url", "")
+        return (
+            f"✅ {action} `{params.path}` on branch `{params.branch}`.\n"
+            f"Commit: `{commit_sha}` — {params.message}\n"
+            f"URL: {url}"
+        )
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+# ---------------------------------------------------------------------------
+# Tools — Commits
+# ---------------------------------------------------------------------------
+ 
+@mcp.tool(
+    name="github_list_commits",
+    annotations={"title": "List Commits", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_commits(params: GHListCommitsInput) -> str:
+    """
+    List recent commits in a repository, optionally filtered by branch.
+ 
+    Args:
+        params.branch: Branch name. Defaults to default branch.
+        params.per_page: Number of commits (default 20).
+    """
+    try:
+        commits = await gh.list_commits(params.owner, params.repo, params.branch, params.per_page)
+        if not commits:
+            return "No commits found."
+        branch_note = f" on `{params.branch}`" if params.branch else ""
+        lines = [f"## Recent commits in `{params.repo}`{branch_note}", "",
+                 "| SHA | Message | Author | Date |",
+                 "|-----|---------|--------|------|"]
+        for c in commits:
+            lines.append(f"| `{c['sha']}` | {c['message'][:60]} | {c['author']} | {c['date'][:10]} |")
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+# ---------------------------------------------------------------------------
+# Tools — Pull Requests
+# ---------------------------------------------------------------------------
+ 
+@mcp.tool(
+    name="github_list_prs",
+    annotations={"title": "List Pull Requests", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_prs(params: GHRepoInput, state: str = "open") -> str:
+    """
+    List pull requests in a repository.
+ 
+    Args:
+        params: repo and optional owner.
+        state: 'open', 'closed', or 'all'.
+    """
+    try:
+        prs = await gh.list_prs(params.owner, params.repo, state)
+        if not prs:
+            return f"No {state} pull requests found in `{params.repo}`."
+        lines = [f"## {state.capitalize()} PRs in `{params.repo}`", "",
+                 "| # | Title | Author | Head → Base | Draft |",
+                 "|---|-------|--------|-------------|-------|"]
+        for pr in prs:
+            draft = "✏️" if pr["draft"] else ""
+            lines.append(
+                f"| [#{pr['number']}]({pr['url']}) "
+                f"| {pr['title'][:50]} "
+                f"| {pr['author']} "
+                f"| `{pr['head']}` → `{pr['base']}` "
+                f"| {draft} |"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_create_pr",
+    annotations={"title": "Create Pull Request", "readOnlyHint": False, "destructiveHint": False},
+)
+async def github_create_pr(params: GHPRCreateInput) -> str:
+    """
+    Create a new pull request.
+ 
+    Args:
+        params.title: PR title.
+        params.head: Source branch (your feature branch).
+        params.base: Target branch (default: 'main').
+        params.body: PR description.
+        params.draft: Create as draft PR (default: false).
+    """
+    try:
+        pr = await gh.create_pr(
+            params.owner, params.repo,
+            params.title, params.head, params.base,
+            params.body, params.draft,
+        )
+        draft_note = " (draft)" if pr.get("draft") else ""
+        return (
+            f"✅ PR #{pr['number']} created{draft_note}: **{pr['title']}**\n"
+            f"`{params.head}` → `{params.base}`\n"
+            f"URL: {pr['html_url']}"
+        )
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_merge_pr",
+    annotations={"title": "Merge Pull Request", "readOnlyHint": False, "destructiveHint": True},
+)
+async def github_merge_pr(params: GHPRMergeInput) -> str:
+    """
+    Merge a pull request.
+ 
+    Args:
+        params.pr_number: PR number to merge.
+        params.method: 'merge', 'squash', or 'rebase' (default: 'squash').
+    """
+    try:
+        result = await gh.merge_pr(params.owner, params.repo, params.pr_number, params.method)
+        sha = result.get("sha", "")[:7]
+        return (
+            f"✅ PR #{params.pr_number} merged ({params.method}).\n"
+            f"Merge commit: `{sha}`\n"
+            f"Message: {result.get('message', '')}"
+        )
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+# ---------------------------------------------------------------------------
+# Tools — Issues
+# ---------------------------------------------------------------------------
+ 
+@mcp.tool(
+    name="github_list_issues",
+    annotations={"title": "List GitHub Issues", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_issues(params: GHRepoInput, state: str = "open") -> str:
+    """
+    List issues in a repository (excludes pull requests).
+ 
+    Args:
+        state: 'open', 'closed', or 'all'.
+    """
+    try:
+        issues = await gh.list_issues(params.owner, params.repo, state)
+        if not issues:
+            return f"No {state} issues found in `{params.repo}`."
+        lines = [f"## {state.capitalize()} Issues in `{params.repo}`", "",
+                 "| # | Title | Author | Labels | Date |",
+                 "|---|-------|--------|--------|------|"]
+        for i in issues:
+            labels = ", ".join(i["labels"]) or "-"
+            lines.append(
+                f"| [#{i['number']}]({i['url']}) "
+                f"| {i['title'][:50]} "
+                f"| {i['author']} "
+                f"| {labels} "
+                f"| {i['created_at'][:10]} |"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_create_issue",
+    annotations={"title": "Create GitHub Issue", "readOnlyHint": False, "destructiveHint": False},
+)
+async def github_create_issue(params: GHIssueCreateInput) -> str:
+    """
+    Create a new issue in a repository.
+ 
+    Args:
+        params.title: Issue title.
+        params.body: Issue description.
+        params.labels: List of label names.
+    """
+    try:
+        issue = await gh.create_issue(params.owner, params.repo, params.title, params.body, params.labels)
+        return (
+            f"✅ Issue #{issue['number']} created: **{issue['title']}**\n"
+            f"URL: {issue['html_url']}"
+        )
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+# ---------------------------------------------------------------------------
+# Tools — GitHub Actions
+# ---------------------------------------------------------------------------
+ 
+@mcp.tool(
+    name="github_list_workflows",
+    annotations={"title": "List GitHub Actions Workflows", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_workflows(params: GHRepoInput) -> str:
+    """List all GitHub Actions workflows in a repository."""
+    try:
+        workflows = await gh.list_workflows(params.owner, params.repo)
+        if not workflows:
+            return f"No workflows found in `{params.repo}`."
+        lines = [f"## Workflows in `{params.repo}`", ""]
+        for w in workflows:
+            lines.append(f"- `{w['path']}` — **{w['name']}** (ID: {w['id']}, state: {w['state']})")
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_list_workflow_runs",
+    annotations={"title": "List GitHub Actions Runs", "readOnlyHint": True, "destructiveHint": False},
+)
+async def github_list_workflow_runs(params: GHWorkflowRunInput) -> str:
+    """
+    List recent GitHub Actions workflow runs.
+ 
+    Args:
+        params.workflow_id: Workflow filename or ID. Omit to list all runs.
+        params.per_page: Number of runs to return (default 10).
+    """
+    try:
+        runs = await gh.list_workflow_runs(params.owner, params.repo, params.workflow_id, params.per_page)
+        if not runs:
+            return "No workflow runs found."
+        lines = ["| Run | Workflow | Status | Branch | Commit | Date |",
+                 "|-----|----------|--------|--------|--------|------|"]
+        for r in runs:
+            status_icon = {"success": "✅", "failure": "❌", "cancelled": "⚠️"}.get(r.get("conclusion") or "", "🔄")
+            lines.append(
+                f"| [{r['id']}]({r['url']}) "
+                f"| {r['name']} "
+                f"| {status_icon} {r.get('conclusion') or r['status']} "
+                f"| `{r['branch']}` "
+                f"| `{r['commit']}` "
+                f"| {r['created_at'][:10]} |"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return _error(str(e))
+ 
+ 
+@mcp.tool(
+    name="github_trigger_workflow",
+    annotations={"title": "Trigger GitHub Actions Workflow", "readOnlyHint": False, "destructiveHint": False},
+)
+async def github_trigger_workflow(params: GHTriggerWorkflowInput) -> str:
+    """
+    Manually trigger a GitHub Actions workflow (workflow_dispatch).
+ 
+    The workflow must have 'workflow_dispatch' trigger in its YAML.
+ 
+    Args:
+        params.workflow_id: Workflow filename (e.g. 'deploy.yml').
+        params.ref: Branch or tag to run on (default: 'main').
+        params.inputs: Optional workflow input parameters as dict.
+    """
+    try:
+        ok = await gh.trigger_workflow(params.owner, params.repo, params.workflow_id, params.ref, params.inputs)
+        if ok:
+            inputs_note = f" with inputs: {params.inputs}" if params.inputs else ""
+            return (
+                f"✅ Workflow `{params.workflow_id}` triggered on `{params.ref}`{inputs_note}.\n"
+                f"Check progress: https://github.com/{params.owner or config.GITHUB_DEFAULT_OWNER}/{params.repo}/actions"
+            )
+        return _error("Workflow trigger failed — check workflow_id and that 'workflow_dispatch' trigger is configured.")
+    except Exception as e:
+        return _error(str(e))
