@@ -66,8 +66,8 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
             if path.startswith(prefix):
                 return await call_next(request)
 
-        # Only enforce auth on /mcp (and sub-paths)
-        if not path.startswith("/mcp"):
+        # Only enforce auth on /mcp and root / (MCP clients may POST to either)
+        if not (path.startswith("/mcp") or path == "/"):
             return await call_next(request)
 
         # Method 1: header
