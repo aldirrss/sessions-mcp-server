@@ -14,36 +14,7 @@ import logging
 import sys
 from typing import Optional
 
-import config  # must be imported before patching
-
-# ---------------------------------------------------------------------------
-# Patch MCP transport security BEFORE importing FastMCP.
-# By default the MCP SDK only allows Host: localhost/127.0.0.1.
-# Running behind a reverse proxy (Cloudflare Tunnel, nginx) sends the real
-# domain as the Host header, which triggers a 421 Misdirected Request.
-# We whitelist the configured external host here.
-# ---------------------------------------------------------------------------
-try:
-    import mcp.server.transport_security as _sec
-
-    _external_host = getattr(config, "MCP_EXTERNAL_HOST", "")
-    _extra = {h.strip() for h in _external_host.split(",") if h.strip()}
-    _extra.update({"localhost", "127.0.0.1", "::1"})
-
-    # The SDK uses one of several attribute names depending on version
-    for _attr in ("ALLOWED_HOSTS", "allowed_hosts", "VALID_HOSTS", "_allowed_hosts"):
-        _val = getattr(_sec, _attr, None)
-        if isinstance(_val, set):
-            _val.update(_extra)
-            break
-        if isinstance(_val, list):
-            _val.extend(_extra - set(_val))
-            break
-    else:
-        # Fallback: set the attribute directly with the most common name
-        setattr(_sec, "ALLOWED_HOSTS", _extra)
-except Exception as _e:
-    pass  # non-fatal — server will log 421 warnings but may still work
+import config
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, field_validator, ConfigDict
@@ -650,10 +621,16 @@ if __name__ == "__main__":
         config.MCP_PORT,
     )
 
+    # Disable DNS rebinding protection — we run behind a trusted reverse proxy
+    # (nginx) that enforces TLS and rewrites Host. Auth is handled by
+    # ApiKeyMiddleware. Leaving protection ON with empty allowed_hosts blocks
+    # every request including localhost.
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    _security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+
     # Get the Starlette ASGI app from FastMCP, then attach middleware to it.
-    # FastMCP.__init__() does not accept a 'middleware' kwarg in mcp>=1.x,
-    # so we add it after the app is created.
-    app = mcp.streamable_http_app()
+    app = mcp.streamable_http_app(transport_security=_security)
     app.add_middleware(ApiKeyMiddleware)
 
     uvicorn.run(
