@@ -1,12 +1,11 @@
 """
-session_store.py — PostgreSQL-backed context store for Claude session continuity.
+PostgreSQL-backed context store for Claude session continuity.
 
 All public functions are async and use the shared asyncpg pool from db.py.
 Sessions persist across Claude Web <-> CLI/VSCode boundaries via a shared
 PostgreSQL database on the VPS.
 """
 
-import re
 import logging
 from typing import Optional
 
@@ -16,25 +15,6 @@ import db
 
 _logger = logging.getLogger("lm-mcp-ai.session")
 
-_SESSION_ID_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,100}$')
-
-
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
-
-def validate_session_id(session_id: str) -> str:
-    if not _SESSION_ID_RE.match(session_id):
-        raise ValueError(
-            f"Invalid session_id '{session_id}'. "
-            "Use only letters, digits, hyphens, underscores (max 100 chars)."
-        )
-    return session_id
-
-
-# ---------------------------------------------------------------------------
-# Row → dict helpers
-# ---------------------------------------------------------------------------
 
 def _session_row(row: asyncpg.Record, notes: list[dict] | None = None) -> dict:
     return {
@@ -58,14 +38,8 @@ def _note_row(row: asyncpg.Record) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# CRUD
-# ---------------------------------------------------------------------------
-
 async def read_session(session_id: str) -> Optional[dict]:
-    """
-    Return full session with all notes, or None if not found.
-    """
+    """Return full session with all notes, or None if not found."""
     pool = await db.get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -110,7 +84,6 @@ async def write_session(
             """,
             session_id, title, context, source, tags_val,
         )
-        # Fetch notes separately so the returned dict is complete
         note_rows = await conn.fetch(
             "SELECT * FROM notes WHERE session_id = $1 ORDER BY created_at ASC",
             session_id,
@@ -142,7 +115,6 @@ async def append_note(session_id: str, content: str, source: str = "unknown") ->
                 "INSERT INTO notes (session_id, content, source) VALUES ($1, $2, $3)",
                 session_id, content, source,
             )
-            # Manually touch updated_at so the trigger fires and the value is current
             await conn.execute(
                 "UPDATE sessions SET updated_at = NOW() WHERE session_id = $1",
                 session_id,
@@ -196,10 +168,7 @@ async def list_sessions(tag: str | None = None) -> list[dict]:
 
 
 async def delete_session(session_id: str) -> bool:
-    """
-    Delete a session and all its notes (CASCADE).
-    Returns True if a row was deleted, False if not found.
-    """
+    """Delete a session and all its notes (CASCADE). Returns True if deleted."""
     pool = await db.get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
@@ -212,8 +181,7 @@ async def delete_session(session_id: str) -> bool:
 async def search_sessions(query: str) -> list[dict]:
     """
     Search sessions using PostgreSQL full-text search (tsvector) with ILIKE fallback.
-    Returns sessions ranked by relevance, most relevant first.
-    Also searches note content via a subquery.
+    Searches across title, context, tags, and note content.
     """
     pool = await db.get_pool()
 
@@ -243,7 +211,6 @@ async def search_sessions(query: str) -> list[dict]:
             f"%{query}%",
         )
 
-    # Re-sort by rank after DISTINCT ON
     sorted_rows = sorted(rows, key=lambda r: (-r["rank"], r["updated_at"]))
 
     return [
@@ -256,10 +223,6 @@ async def search_sessions(query: str) -> list[dict]:
         for r in sorted_rows
     ]
 
-
-# ---------------------------------------------------------------------------
-# Stats helper (bonus — used by session_list for summary)
-# ---------------------------------------------------------------------------
 
 async def get_stats() -> dict:
     """Return aggregate stats: total sessions, total notes, last update."""

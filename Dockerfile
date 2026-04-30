@@ -19,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY config.py db.py docker_client.py session_store.py server.py ./
+COPY config.py db.py server.py ./
+COPY tools/ ./tools/
 
 # Non-root user for safety
 RUN useradd -r -u 1000 -g root mcpuser \
