@@ -112,7 +112,6 @@ register_sessions(mcp)
 if __name__ == "__main__":
     import uvicorn
     from contextlib import asynccontextmanager
-    from mcp.server.transport_security import TransportSecurityMiddleware, TransportSecuritySettings
 
     _logger.info(
         "Starting lm-mcp-ai on %s:%d (streamable_http)",
@@ -137,31 +136,9 @@ if __name__ == "__main__":
 
     app.router.lifespan_context = _combined_lifespan
 
-    # Disable DNS rebinding protection — nginx/Cloudflare enforce TLS upstream.
-    _disabled = TransportSecuritySettings(enable_dns_rebinding_protection=False)
-
-    def _patch_transport_security(obj, depth: int = 0) -> bool:
-        if depth > 15:
-            return False
-        if isinstance(obj, TransportSecurityMiddleware):
-            obj.settings = _disabled
-            _logger.info("TransportSecurityMiddleware: DNS rebinding protection disabled")
-            return True
-        for attr in ("app", "_app", "middleware", "handler"):
-            child = getattr(obj, attr, None)
-            if child is not None and _patch_transport_security(child, depth + 1):
-                return True
-        if hasattr(obj, "__dict__"):
-            for child in obj.__dict__.values():
-                if child is not obj and _patch_transport_security(child, depth + 1):
-                    return True
-        return False
-
-    if not _patch_transport_security(app):
-        _logger.warning(
-            "Could not locate TransportSecurityMiddleware — "
-            "requests with external Host headers may return 421"
-        )
+    # TransportSecurityMiddleware is already neutralized via the class-level
+    # monkey-patch at module load time (_validate_all returns None).
+    # No instance patching needed.
 
     app.add_middleware(ApiKeyMiddleware)
 
