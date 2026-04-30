@@ -393,19 +393,37 @@ For Cloudflare, go to **Logs → Log Retention** and disable if needed.
 This connects your local Claude Code CLI directly to the MCP server running on the VPS.
 No local Python environment needed.
 
-Add the server using the CLI:
+Add the server globally (available in all projects):
 
 ```bash
-claude mcp add --transport http docker-vps https://mcp.yourdomain.com/mcp \
+claude mcp add --transport http --scope global mcp-lema https://mcp.yourdomain.com/mcp \
   --header "X-API-Key: your-mcp-api-key-here"
 ```
 
-Or add it manually to `~/.claude/claude_mcp_config.json`:
+> **Scope matters**:
+> - `--scope global` → stored in `~/.claude.json` under a global key, available everywhere.
+> - Without `--scope global` (default: `local`) → stored scoped to the current directory.
+>   The MCP will only be active when Claude Code is opened from that directory.
+>
+> Always use `--scope global` for a VPS MCP you want available in every project.
+
+Verify connection:
+
+```bash
+claude mcp list
+```
+
+You should see `mcp-lema` listed as connected.
+
+**Manual config** (if you prefer to edit directly):
+
+The config file is `~/.claude.json`. Find or create the `"mcpServers"` key inside the
+`"globalMcpServers"` section (global scope) or under the project path (local scope):
 
 ```json
 {
-  "mcpServers": {
-    "docker-vps": {
+  "globalMcpServers": {
+    "mcp-lema": {
       "type": "http",
       "url": "https://mcp.yourdomain.com/mcp",
       "headers": {
@@ -416,13 +434,8 @@ Or add it manually to `~/.claude/claude_mcp_config.json`:
 }
 ```
 
-Verify connection:
-
-```bash
-claude mcp list
-```
-
-You should see `docker-vps` listed as connected.
+> Note: `~/.claude.json` also contains per-project settings — edit carefully and
+> prefer using the `claude mcp add` CLI command to avoid breaking the file structure.
 
 ### Option B — Run server locally via stdio (for local Docker only)
 
