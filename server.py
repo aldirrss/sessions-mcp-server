@@ -41,16 +41,36 @@ _logger = logging.getLogger("lm-docker-mcp")
 
 class ApiKeyMiddleware(BaseHTTPMiddleware):
     """
-    Accept requests that carry a valid API key via either:
-      - X-API-Key header  (Claude Code CLI, curl)
-      - ?key= query param (claude.ai web connector — no header support in UI)
+    Enforce API key only on /mcp path.
+    All other paths (OAuth discovery, well-known, health) pass through freely
+    so claude.ai can complete its OAuth probe before falling back to key auth.
+
+    Accepted key locations (checked in order):
+      1. X-API-Key header  — Claude Code CLI / curl
+      2. ?key= query param — claude.ai web connector (no header UI support)
     """
 
+    # Paths that must be reachable without auth (OAuth discovery by claude.ai)
+    _OPEN_PREFIXES = (
+        "/.well-known/",
+        "/health",
+        "/register",
+        "/oauth",
+    )
+
     async def dispatch(self, request: Request, call_next) -> Response:
-        if request.url.path in ("/health",):
+        path = request.url.path
+
+        # Let OAuth discovery and health checks through without auth
+        for prefix in self._OPEN_PREFIXES:
+            if path.startswith(prefix):
+                return await call_next(request)
+
+        # Only enforce auth on /mcp (and sub-paths)
+        if not path.startswith("/mcp"):
             return await call_next(request)
 
-        # Method 1: header (preferred — key never appears in server logs)
+        # Method 1: header
         api_key = (
             request.headers.get("X-API-Key")
             or request.headers.get("x-api-key")
@@ -61,7 +81,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
             api_key = request.query_params.get("key")
 
         if api_key != config.MCP_API_KEY:
-            _logger.warning("Unauthorized request from %s", request.client)
+            _logger.warning("Unauthorized /mcp request from %s", request.client)
             return Response(
                 content=json.dumps({"error": "Unauthorized"}),
                 status_code=401,
