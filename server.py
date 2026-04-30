@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-lm-mcp-ai — MCP Server for Docker Compose management on VPS.
+lm-mcp-ai — MCP Server: Docker management + Claude session continuity.
 
 Transport : Streamable HTTP  (connects to claude.ai web and Claude Code CLI)
 Auth      : Two accepted methods (checked in order):
@@ -32,15 +32,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+import db
 import docker_client
-
-# ===========================================================================
-# GitHub Tools
-# Requires: GITHUB_TOKEN and GITHUB_DEFAULT_OWNER in .env
-# ===========================================================================
-
-import github_client as gh
-from typing import Optional as Opt
+import session_store as ss
 
 # ---------------------------------------------------------------------------
 # Logging — use stderr so stdout stays clean for MCP protocol
@@ -69,7 +63,6 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
       2. ?key= query param — claude.ai web connector (no header UI support)
     """
 
-    # Paths that must be reachable without auth (OAuth discovery by claude.ai)
     _OPEN_PREFIXES = (
         "/.well-known/",
         "/health",
@@ -80,22 +73,18 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
 
-        # Let OAuth discovery and health checks through without auth
         for prefix in self._OPEN_PREFIXES:
             if path.startswith(prefix):
                 return await call_next(request)
 
-        # Only enforce auth on /mcp and root / (MCP clients may POST to either)
         if not (path.startswith("/mcp") or path == "/"):
             return await call_next(request)
 
-        # Method 1: header
         api_key = (
             request.headers.get("X-API-Key")
             or request.headers.get("x-api-key")
         )
 
-        # Method 2: query parameter (claude.ai web connector)
         if not api_key:
             api_key = request.query_params.get("key")
 
@@ -113,11 +102,11 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
 # FastMCP server
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("docker_mcp")
+mcp = FastMCP("lm-mcp-ai", lifespan=db.lifespan)
 
 
 # ---------------------------------------------------------------------------
-# Pydantic input models
+# Pydantic models — Docker
 # ---------------------------------------------------------------------------
 
 class StackInput(BaseModel):
@@ -212,6 +201,97 @@ class ExecInput(ContainerInput):
 
 
 # ---------------------------------------------------------------------------
+# Pydantic models — Session Store
+# ---------------------------------------------------------------------------
+
+class SessionWriteInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    session_id: str = Field(
+        ...,
+        description="Unique session identifier (letters, digits, hyphens, underscores). "
+                    "Example: 'feat-auth-dev', 'odoo-refactor-2026'.",
+        min_length=1,
+        max_length=100,
+    )
+    title: str = Field(
+        ...,
+        description="Short human-readable title for the session.",
+        min_length=1,
+        max_length=200,
+    )
+    context: str = Field(
+        ...,
+        description="Full context to store: current state, goals, decisions, next steps. "
+                    "This is the main body that will be read when resuming the session.",
+        min_length=1,
+    )
+    source: str = Field(
+        default="unknown",
+        description="Origin client: 'web', 'cli', 'vscode', or any identifier.",
+        max_length=50,
+    )
+    tags: Optional[list[str]] = Field(
+        default=None,
+        description="Optional list of tags for filtering (e.g. ['odoo', 'backend']).",
+    )
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        ss.validate_session_id(v)
+        return v
+
+
+class SessionReadInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    session_id: str = Field(..., description="Session ID to read.", min_length=1, max_length=100)
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        ss.validate_session_id(v)
+        return v
+
+
+class SessionAppendInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    session_id: str = Field(..., description="Session ID to append the note to.", min_length=1, max_length=100)
+    content: str = Field(..., description="Note content to append (progress update, decision, blocker, etc.).", min_length=1)
+    source: str = Field(
+        default="unknown",
+        description="Origin client: 'web', 'cli', 'vscode'.",
+        max_length=50,
+    )
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        ss.validate_session_id(v)
+        return v
+
+
+class SessionDeleteInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    session_id: str = Field(..., description="Session ID to delete.", min_length=1, max_length=100)
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        ss.validate_session_id(v)
+        return v
+
+
+class SessionListInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tag: Optional[str] = Field(default=None, description="Filter sessions by tag. Omit to list all.")
+
+
+class SessionSearchInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    query: str = Field(..., description="Keyword to search across title, context, notes, and tags.", min_length=1)
+
+
+# ---------------------------------------------------------------------------
 # Error helper
 # ---------------------------------------------------------------------------
 
@@ -220,9 +300,9 @@ def _error(msg: str) -> str:
     return f"Error: {msg}"
 
 
-# ---------------------------------------------------------------------------
-# Tools — READ-ONLY
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tools — Docker (READ-ONLY)
+# ===========================================================================
 
 @mcp.tool(
     name="docker_list_stacks",
@@ -240,21 +320,14 @@ async def docker_list_stacks() -> str:
 
     Returns a Markdown table with each stack's name, status, and compose file path.
     Uses `docker compose ls --all` under the hood.
-
-    Returns:
-        str: Markdown table of stacks, or a message if none are found.
     """
     try:
         stacks = await docker_client.list_stacks()
         if not stacks:
             return "No Docker Compose stacks found on this host."
-
         lines = ["| Name | Status | Config Files |", "|------|--------|--------------|"]
         for s in stacks:
-            name = s.get("Name", "-")
-            status = s.get("Status", "-")
-            config_files = s.get("ConfigFiles", "-")
-            lines.append(f"| {name} | {status} | {config_files} |")
+            lines.append(f"| {s.get('Name', '-')} | {s.get('Status', '-')} | {s.get('ConfigFiles', '-')} |")
         return "\n".join(lines)
     except Exception as e:
         return _error(str(e))
@@ -274,36 +347,25 @@ async def docker_stack_ps(params: StackInput) -> str:
     """
     List all containers in a Docker Compose stack with their current state.
 
-    Shows container name, image, status, and port bindings for each service.
-
     Args:
-        params (StackInput):
-            - project (str): Compose project name.
-
-    Returns:
-        str: Markdown table of containers in the stack.
+        params.project: Compose project name.
     """
     try:
         containers = await docker_client.stack_ps(params.project)
         if not containers:
             return f"No containers found for project '{params.project}'."
-
         lines = [
-            f"## Stack: {params.project}",
-            "",
+            f"## Stack: {params.project}", "",
             "| Name | Image | Status | Ports |",
             "|------|-------|--------|-------|",
         ]
         for c in containers:
-            name = c.get("Name", "-")
-            image = c.get("Image", "-")
-            status = c.get("Status", "-")
             ports = c.get("Publishers", [])
             port_str = ", ".join(
                 f"{p.get('PublishedPort', '?')}→{p.get('TargetPort', '?')}/{p.get('Protocol', 'tcp')}"
                 for p in ports if p.get("PublishedPort")
             ) or "-"
-            lines.append(f"| {name} | {image} | {status} | {port_str} |")
+            lines.append(f"| {c.get('Name', '-')} | {c.get('Image', '-')} | {c.get('Status', '-')} | {port_str} |")
         return "\n".join(lines)
     except Exception as e:
         return _error(str(e))
@@ -324,20 +386,12 @@ async def docker_stack_logs(params: StackLogsInput) -> str:
     Retrieve recent log output from a Docker Compose stack or a specific service.
 
     Args:
-        params (StackLogsInput):
-            - project (str): Compose project name.
-            - service (Optional[str]): Specific service to fetch logs from. Omit for all.
-            - tail (int): Number of lines to return (default 100, max 200).
-
-    Returns:
-        str: Raw log output from the container(s).
+        params.project: Compose project name.
+        params.service: Specific service to fetch logs from. Omit for all.
+        params.tail: Number of lines to return (default 100, max 500).
     """
     try:
-        logs = await docker_client.stack_logs(
-            params.project,
-            service=params.service,
-            tail=params.tail,
-        )
+        logs = await docker_client.stack_logs(params.project, service=params.service, tail=params.tail)
         if not logs.strip():
             target = f"{params.project}/{params.service}" if params.service else params.project
             return f"No log output for '{target}'."
@@ -361,24 +415,15 @@ async def docker_list_containers(params: ContainerListInput) -> str:
     List Docker containers on this host.
 
     Args:
-        params (ContainerListInput):
-            - all_containers (bool): Include stopped containers if true (default: false).
-
-    Returns:
-        str: Markdown table of container name, image, status, and ports.
+        params.all_containers: Include stopped containers if true (default: false).
     """
     try:
         containers = await docker_client.list_containers(params.all_containers)
         if not containers:
             return "No containers found."
-
         lines = ["| Name | Image | Status | Ports |", "|------|-------|--------|-------|"]
         for c in containers:
-            name = c.get("Names", "-")
-            image = c.get("Image", "-")
-            status = c.get("Status", "-")
-            ports = c.get("Ports", "-")
-            lines.append(f"| {name} | {image} | {status} | {ports} |")
+            lines.append(f"| {c.get('Names', '-')} | {c.get('Image', '-')} | {c.get('Status', '-')} | {c.get('Ports', '-')} |")
         return "\n".join(lines)
     except Exception as e:
         return _error(str(e))
@@ -398,14 +443,8 @@ async def docker_inspect_container(params: ContainerInput) -> str:
     """
     Return low-level JSON information about a container (like `docker inspect`).
 
-    Useful for diagnosing network, volume, environment, and health configuration.
-
     Args:
-        params (ContainerInput):
-            - container (str): Container name or ID.
-
-    Returns:
-        str: JSON-formatted container inspection data.
+        params.container: Container name or ID.
     """
     try:
         data = await docker_client.inspect_container(params.container)
@@ -429,35 +468,28 @@ async def docker_stats() -> str:
     Return a one-shot CPU, memory, and network usage snapshot for all running containers.
 
     Uses `docker stats --no-stream`. Does NOT stream — returns current values only.
-
-    Returns:
-        str: Markdown table with resource usage per container.
     """
     try:
         stats = await docker_client.docker_stats_snapshot()
         if not stats:
             return "No running containers found."
-
         lines = [
             "| Container | CPU % | Mem Usage | Mem % | Net I/O | Block I/O |",
             "|-----------|-------|-----------|-------|---------|-----------|",
         ]
         for s in stats:
-            name = s.get("Name", "-")
-            cpu = s.get("CPUPerc", "-")
-            mem_usage = s.get("MemUsage", "-")
-            mem_perc = s.get("MemPerc", "-")
-            net_io = s.get("NetIO", "-")
-            block_io = s.get("BlockIO", "-")
-            lines.append(f"| {name} | {cpu} | {mem_usage} | {mem_perc} | {net_io} | {block_io} |")
+            lines.append(
+                f"| {s.get('Name', '-')} | {s.get('CPUPerc', '-')} | {s.get('MemUsage', '-')} "
+                f"| {s.get('MemPerc', '-')} | {s.get('NetIO', '-')} | {s.get('BlockIO', '-')} |"
+            )
         return "\n".join(lines)
     except Exception as e:
         return _error(str(e))
 
 
-# ---------------------------------------------------------------------------
-# Tools — WRITE / LIFECYCLE
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tools — Docker (WRITE / LIFECYCLE)
+# ===========================================================================
 
 @mcp.tool(
     name="docker_stack_up",
@@ -473,15 +505,9 @@ async def docker_stack_up(params: StackServiceInput) -> str:
     """
     Start a Docker Compose stack (or a specific service) in detached mode.
 
-    Equivalent to `docker compose -p <project> up -d [service]`.
-
     Args:
-        params (StackServiceInput):
-            - project (str): Compose project name.
-            - service (Optional[str]): Start only this service. Omit to start all.
-
-    Returns:
-        str: Output from docker compose up.
+        params.project: Compose project name.
+        params.service: Start only this service. Omit to start all.
     """
     try:
         out = await docker_client.stack_up(params.project, service=params.service)
@@ -505,15 +531,9 @@ async def docker_stack_down(params: StackDownInput) -> str:
     """
     Stop and remove containers for a Docker Compose stack.
 
-    Equivalent to `docker compose -p <project> down [-v]`.
-
     Args:
-        params (StackDownInput):
-            - project (str): Compose project name.
-            - remove_volumes (bool): Also remove named volumes (default: false). IRREVERSIBLE.
-
-    Returns:
-        str: Output from docker compose down.
+        params.project: Compose project name.
+        params.remove_volumes: Also remove named volumes (default: false). IRREVERSIBLE.
     """
     try:
         out = await docker_client.stack_down(params.project, remove_volumes=params.remove_volumes)
@@ -537,15 +557,9 @@ async def docker_stack_restart(params: StackServiceInput) -> str:
     """
     Restart all services (or one) in a Docker Compose stack.
 
-    Equivalent to `docker compose -p <project> restart [service]`.
-
     Args:
-        params (StackServiceInput):
-            - project (str): Compose project name.
-            - service (Optional[str]): Restart only this service. Omit to restart all.
-
-    Returns:
-        str: Output from docker compose restart.
+        params.project: Compose project name.
+        params.service: Restart only this service. Omit to restart all.
     """
     try:
         out = await docker_client.stack_restart(params.project, service=params.service)
@@ -569,16 +583,9 @@ async def docker_stack_pull(params: StackServiceInput) -> str:
     """
     Pull the latest Docker images for a compose stack or specific service.
 
-    Equivalent to `docker compose -p <project> pull [service]`.
-    Does NOT restart containers — use docker_stack_restart after pulling.
-
     Args:
-        params (StackServiceInput):
-            - project (str): Compose project name.
-            - service (Optional[str]): Pull only this service's image. Omit for all.
-
-    Returns:
-        str: Output from docker compose pull.
+        params.project: Compose project name.
+        params.service: Pull only this service's image. Omit for all.
     """
     try:
         out = await docker_client.stack_pull(params.project, service=params.service)
@@ -603,20 +610,10 @@ async def docker_exec(params: ExecInput) -> str:
     Execute a command inside a running container.
 
     The command is passed as a list of tokens — no shell expansion occurs.
-    This prevents injection attacks.
-
-    Examples of safe usage:
-        - command: ["cat", "/etc/os-release"]
-        - command: ["python", "-c", "import sys; print(sys.version)"]
-        - command: ["ls", "-la", "/var/log"]
 
     Args:
-        params (ExecInput):
-            - container (str): Container name or ID.
-            - command (list[str]): Command tokens to execute (max 20 tokens).
-
-    Returns:
-        str: stdout output from the command.
+        params.container: Container name or ID.
+        params.command: Command tokens to execute (max 20 tokens).
     """
     try:
         out = await docker_client.container_exec(params.container, params.command)
@@ -626,312 +623,147 @@ async def docker_exec(params: ExecInput) -> str:
         return _error(str(e))
 
 
-# ---------------------------------------------------------------------------
-# Pydantic models for GitHub tools
-# ---------------------------------------------------------------------------
-
-class GHRepoInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-    owner: Opt[str] = Field(default=None, description="GitHub owner (user or org). Falls back to GITHUB_DEFAULT_OWNER if omitted.")
-    repo: str = Field(..., description="Repository name (without owner prefix).", min_length=1, max_length=100)
-
-
-class GHBranchInput(GHRepoInput):
-    branch: str = Field(..., description="Branch name.", min_length=1, max_length=255)
-
-
-class GHFileInput(GHRepoInput):
-    path: str = Field(..., description="File path within the repo (e.g. 'src/main.py').", min_length=1)
-    ref: Opt[str] = Field(default=None, description="Branch, tag, or commit SHA to read from. Defaults to default branch.")
-
-
-class GHCreateBranchInput(GHRepoInput):
-    new_branch: str = Field(..., description="Name of the new branch to create.", min_length=1, max_length=255)
-    from_branch: str = Field(default="main", description="Source branch to branch off from.")
-
-
-class GHCreateFileInput(GHRepoInput):
-    path: str = Field(..., description="File path to create or update (e.g. 'docs/notes.md').")
-    content: str = Field(..., description="Full file content as a UTF-8 string.")
-    message: str = Field(..., description="Commit message.", min_length=1, max_length=500)
-    branch: str = Field(default="main", description="Target branch for the commit.")
-    sha: Opt[str] = Field(default=None, description="Current file SHA — required when updating an existing file.")
-
-
-class GHPRCreateInput(GHRepoInput):
-    title: str = Field(..., description="Pull request title.", min_length=1, max_length=255)
-    head: str = Field(..., description="Source branch (the branch with your changes).")
-    base: str = Field(default="main", description="Target branch to merge into.")
-    body: str = Field(default="", description="PR description / body text.")
-    draft: bool = Field(default=False, description="Create as draft PR.")
-
-
-class GHPRMergeInput(GHRepoInput):
-    pr_number: int = Field(..., description="Pull request number.", ge=1)
-    method: str = Field(default="squash", description="Merge method: 'merge', 'squash', or 'rebase'.")
-
-
-class GHIssueCreateInput(GHRepoInput):
-    title: str = Field(..., description="Issue title.", min_length=1, max_length=255)
-    body: str = Field(default="", description="Issue body / description.")
-    labels: Opt[list[str]] = Field(default=None, description="List of label names to apply.")
-
-
-class GHListCommitsInput(GHRepoInput):
-    branch: Opt[str] = Field(default=None, description="Filter commits by branch. Defaults to default branch.")
-    per_page: int = Field(default=20, description="Number of commits to return.", ge=1, le=100)
-
-
-class GHWorkflowRunInput(GHRepoInput):
-    workflow_id: Opt[str] = Field(default=None, description="Workflow filename (e.g. 'deploy.yml') or numeric ID. Omit to list all runs.")
-    per_page: int = Field(default=10, description="Number of runs to return.", ge=1, le=50)
-
-
-class GHTriggerWorkflowInput(GHRepoInput):
-    workflow_id: str = Field(..., description="Workflow filename (e.g. 'deploy.yml') or numeric ID.")
-    ref: str = Field(default="main", description="Branch or tag to run the workflow on.")
-    inputs: Opt[dict] = Field(default=None, description="Workflow dispatch inputs as key-value pairs.")
-
-
-class GHListDirInput(GHRepoInput):
-    path: str = Field(default="", description="Directory path within the repo. Empty string = root.")
-    ref: Opt[str] = Field(default=None, description="Branch, tag, or commit SHA. Defaults to default branch.")
-
-
-# ---------------------------------------------------------------------------
-# Tools — Repository
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tools — Session Context Store
+# ===========================================================================
 
 @mcp.tool(
-    name="github_list_repos",
-    annotations={"title": "List GitHub Repositories", "readOnlyHint": True, "destructiveHint": False},
+    name="session_write",
+    annotations={
+        "title": "Write Session Context",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
 )
-async def github_list_repos(
-    owner: Opt[str] = None,
-    type: str = "all",
-    per_page: int = 30,
-) -> str:
+async def session_write(params: SessionWriteInput) -> str:
     """
-    List repositories for a GitHub user or organization.
+    Create or overwrite a session context in the shared store.
+
+    Use this to save the current state of work so it can be resumed from
+    Claude Web, Claude CLI, or VSCode. Overwrites context but preserves notes.
 
     Args:
-        owner: GitHub username or org name. Falls back to GITHUB_DEFAULT_OWNER if omitted.
-        type: Filter by 'all', 'public', 'private', 'forks', 'sources', 'member'.
-        per_page: Number of repos to return (default 30).
+        params.session_id: Unique key for this session (e.g. 'feat-auth-dev').
+        params.title: Short human-readable title.
+        params.context: Full context — goals, current state, decisions, next steps.
+        params.source: Origin client ('web', 'cli', 'vscode').
+        params.tags: Optional tags for filtering.
+
+    Returns:
+        Confirmation with session summary.
     """
     try:
-        repos = await gh.list_repos(owner=owner, type=type, per_page=per_page)
-        if not repos:
-            return "No repositories found."
-        lines = ["| Repo | Visibility | Language | Updated | Stars |",
-                 "|------|-----------|----------|---------|-------|"]
-        for r in repos:
-            lines.append(
-                f"| [{r['name']}]({r['html_url']}) "
-                f"| {'🔒 private' if r.get('private') else '🌐 public'} "
-                f"| {r.get('language') or '-'} "
-                f"| {r.get('updated_at', '')[:10]} "
-                f"| ⭐ {r.get('stargazers_count', 0)} |"
-            )
-        return "\n".join(lines)
-    except Exception as e:
-        return _error(str(e))
-
-
-# ---------------------------------------------------------------------------
-# Tools — Branches
-# ---------------------------------------------------------------------------
-
-@mcp.tool(
-    name="github_list_branches",
-    annotations={"title": "List GitHub Branches", "readOnlyHint": True, "destructiveHint": False},
-)
-async def github_list_branches(params: GHRepoInput) -> str:
-    """List all branches in a repository."""
-    try:
-        branches = await gh.list_branches(params.owner, params.repo)
-        if not branches:
-            return f"No branches found in '{params.repo}'."
-        lines = [f"## Branches in {params.repo}", ""]
-        for b in branches:
-            protected = "🔒" if b.get("protected") else "  "
-            lines.append(f"- {protected} `{b['name']}` — SHA: `{b['commit']['sha'][:7]}`")
-        return "\n".join(lines)
-    except Exception as e:
-        return _error(str(e))
-
-
-@mcp.tool(
-    name="github_create_branch",
-    annotations={"title": "Create GitHub Branch", "readOnlyHint": False, "destructiveHint": False},
-)
-async def github_create_branch(params: GHCreateBranchInput) -> str:
-    """
-    Create a new branch from an existing branch.
-
-    Args:
-        params.new_branch: Name of the branch to create.
-        params.from_branch: Source branch (default: 'main').
-    """
-    try:
-        result = await gh.create_branch(params.owner, params.repo, params.new_branch, params.from_branch)
-        sha = result.get("object", {}).get("sha", "")[:7]
-        return f"✅ Branch `{params.new_branch}` created from `{params.from_branch}` (SHA: `{sha}`) in `{params.repo}`."
-    except Exception as e:
-        return _error(str(e))
-
-
-# ---------------------------------------------------------------------------
-# Tools — Files
-# ---------------------------------------------------------------------------
-
-@mcp.tool(
-    name="github_read_file",
-    annotations={"title": "Read File from GitHub", "readOnlyHint": True, "destructiveHint": False},
-)
-async def github_read_file(params: GHFileInput) -> str:
-    """
-    Read the content of a file from a GitHub repository.
-
-    Args:
-        params.path: File path within the repo (e.g. 'server.py').
-        params.ref: Branch, tag, or commit SHA. Defaults to default branch.
-    """
-    try:
-        result = await gh.get_file(params.owner, params.repo, params.path, params.ref)
-        ref_note = f" @ `{params.ref}`" if params.ref else ""
-        header = f"## `{result['path']}`{ref_note} ({result['size']} bytes)\n\n"
-        return header + f"```\n{result['content']}\n```"
-    except Exception as e:
-        return _error(str(e))
-
-
-@mcp.tool(
-    name="github_list_directory",
-    annotations={"title": "List Directory in GitHub Repo", "readOnlyHint": True, "destructiveHint": False},
-)
-async def github_list_directory(params: GHListDirInput) -> str:
-    """
-    List files and directories at a given path in a repository.
-
-    Args:
-        params.path: Directory path (empty = root).
-        params.ref: Branch, tag, or commit SHA.
-    """
-    try:
-        items = await gh.list_directory(params.owner, params.repo, params.path, params.ref)
-        if not items:
-            return "Directory is empty."
-        lines = [f"## `{params.repo}/{params.path or ''}`", ""]
-        dirs = [i for i in items if i["type"] == "dir"]
-        files = [i for i in items if i["type"] == "file"]
-        for d in sorted(dirs, key=lambda x: x["name"]):
-            lines.append(f"📁 `{d['name']}/`")
-        for f in sorted(files, key=lambda x: x["name"]):
-            size = f"{f['size']:,} B" if f["size"] else "-"
-            lines.append(f"📄 `{f['name']}` ({size})")
-        return "\n".join(lines)
-    except Exception as e:
-        return _error(str(e))
-
-
-@mcp.tool(
-    name="github_write_file",
-    annotations={"title": "Write File to GitHub", "readOnlyHint": False, "destructiveHint": False},
-)
-async def github_write_file(params: GHCreateFileInput) -> str:
-    """
-    Create or update a file in a GitHub repository (creates a commit).
-
-    For updates, provide the current file SHA (get it via github_read_file first).
-    For new files, leave sha empty.
-
-    Args:
-        params.path: File path in the repo.
-        params.content: Full file content.
-        params.message: Commit message.
-        params.branch: Target branch (default: 'main').
-        params.sha: Current file SHA (required for updates, omit for new files).
-    """
-    try:
-        result = await gh.create_or_update_file(
-            params.owner, params.repo, params.path,
-            params.content, params.message, params.branch, params.sha,
+        session = await ss.write_session(
+            params.session_id,
+            params.title,
+            params.context,
+            source=params.source,
+            tags=params.tags,
         )
-        action = "Updated" if params.sha else "Created"
-        commit_sha = result.get("commit", {}).get("sha", "")[:7]
-        url = result.get("content", {}).get("html_url", "")
+        action = "Updated" if session.get("notes") else "Created"
+        tags_note = f" | tags: {', '.join(session['tags'])}" if session["tags"] else ""
         return (
-            f"✅ {action} `{params.path}` on branch `{params.branch}`.\n"
-            f"Commit: `{commit_sha}` — {params.message}\n"
-            f"URL: {url}"
+            f"Session `{params.session_id}` {action.lower()}.\n"
+            f"**Title:** {session['title']}\n"
+            f"**Source:** {session['source']}{tags_note}\n"
+            f"**Updated:** {session['updated_at']}"
         )
     except Exception as e:
         return _error(str(e))
 
 
-# ---------------------------------------------------------------------------
-# Tools — Commits
-# ---------------------------------------------------------------------------
-
 @mcp.tool(
-    name="github_list_commits",
-    annotations={"title": "List Commits", "readOnlyHint": True, "destructiveHint": False},
+    name="session_read",
+    annotations={
+        "title": "Read Session Context",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
 )
-async def github_list_commits(params: GHListCommitsInput) -> str:
+async def session_read(params: SessionReadInput) -> str:
     """
-    List recent commits in a repository, optionally filtered by branch.
+    Read the full context of a session from the shared store.
+
+    Use this at the start of a conversation to resume where you left off.
 
     Args:
-        params.branch: Branch name. Defaults to default branch.
-        params.per_page: Number of commits (default 20).
+        params.session_id: Session ID to read.
+
+    Returns:
+        Full session context including notes history.
     """
     try:
-        commits = await gh.list_commits(params.owner, params.repo, params.branch, params.per_page)
-        if not commits:
-            return "No commits found."
-        branch_note = f" on `{params.branch}`" if params.branch else ""
-        lines = [f"## Recent commits in `{params.repo}`{branch_note}", "",
-                 "| SHA | Message | Author | Date |",
-                 "|-----|---------|--------|------|"]
-        for c in commits:
-            lines.append(f"| `{c['sha']}` | {c['message'][:60]} | {c['author']} | {c['date'][:10]} |")
+        session = await ss.read_session(params.session_id)
+        if session is None:
+            return f"Session `{params.session_id}` not found."
+
+        tags_note = f"**Tags:** {', '.join(session['tags'])}\n" if session.get("tags") else ""
+        lines = [
+            f"# Session: {session['title']}",
+            f"**ID:** `{session['session_id']}` | **Source:** {session['source']}",
+            f"**Created:** {session['created_at']} | **Updated:** {session['updated_at']}",
+            tags_note,
+            "---",
+            "## Context",
+            session["context"],
+        ]
+
+        notes = session.get("notes", [])
+        if notes:
+            lines += ["", "---", f"## Notes ({len(notes)})"]
+            for i, note in enumerate(notes, 1):
+                lines.append(f"\n**[{i}] {note['timestamp']} ({note['source']})**")
+                lines.append(note["content"])
+
         return "\n".join(lines)
     except Exception as e:
         return _error(str(e))
 
 
-# ---------------------------------------------------------------------------
-# Tools — Pull Requests
-# ---------------------------------------------------------------------------
-
 @mcp.tool(
-    name="github_list_prs",
-    annotations={"title": "List Pull Requests", "readOnlyHint": True, "destructiveHint": False},
+    name="session_list",
+    annotations={
+        "title": "List All Sessions",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
 )
-async def github_list_prs(params: GHRepoInput, state: str = "open") -> str:
+async def session_list(params: SessionListInput) -> str:
     """
-    List pull requests in a repository.
+    List all sessions in the shared store.
 
     Args:
-        params: repo and optional owner.
-        state: 'open', 'closed', or 'all'.
+        params.tag: Optional tag to filter by. Omit to list all.
+
+    Returns:
+        Markdown table of sessions with ID, title, source, tags, note count, and last update.
     """
     try:
-        prs = await gh.list_prs(params.owner, params.repo, state)
-        if not prs:
-            return f"No {state} pull requests found in `{params.repo}`."
-        lines = [f"## {state.capitalize()} PRs in `{params.repo}`", "",
-                 "| # | Title | Author | Head → Base | Draft |",
-                 "|---|-------|--------|-------------|-------|"]
-        for pr in prs:
-            draft = "✏️" if pr["draft"] else ""
+        sessions = await ss.list_sessions(tag=params.tag)
+        stats = await ss.get_stats()
+
+        if not sessions:
+            filter_note = f" with tag '{params.tag}'" if params.tag else ""
+            return f"No sessions found{filter_note}."
+
+        lines = [
+            f"## Sessions ({stats['total_sessions']} total, {stats['total_notes']} notes)",
+            f"*Last updated: {stats['last_updated']}*",
+            "",
+            "| ID | Title | Source | Tags | Notes | Updated |",
+            "|----|-------|--------|------|-------|---------|",
+        ]
+        for s in sessions:
+            tags = ", ".join(s["tags"]) or "-"
             lines.append(
-                f"| [#{pr['number']}]({pr['url']}) "
-                f"| {pr['title'][:50]} "
-                f"| {pr['author']} "
-                f"| `{pr['head']}` → `{pr['base']}` "
-                f"| {draft} |"
+                f"| `{s['session_id']}` | {s['title']} | {s['source']} "
+                f"| {tags} | {s['notes_count']} | {s['updated_at']} |"
             )
         return "\n".join(lines)
     except Exception as e:
@@ -939,200 +771,106 @@ async def github_list_prs(params: GHRepoInput, state: str = "open") -> str:
 
 
 @mcp.tool(
-    name="github_create_pr",
-    annotations={"title": "Create Pull Request", "readOnlyHint": False, "destructiveHint": False},
+    name="session_append",
+    annotations={
+        "title": "Append Note to Session",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": False,
+    },
 )
-async def github_create_pr(params: GHPRCreateInput) -> str:
+async def session_append(params: SessionAppendInput) -> str:
     """
-    Create a new pull request.
+    Append a timestamped note to an existing session without overwriting its context.
+
+    Use this to log progress updates, decisions, or blockers mid-session.
 
     Args:
-        params.title: PR title.
-        params.head: Source branch (your feature branch).
-        params.base: Target branch (default: 'main').
-        params.body: PR description.
-        params.draft: Create as draft PR (default: false).
+        params.session_id: Session ID to append to.
+        params.content: Note content (progress update, decision, blocker, etc.).
+        params.source: Origin client ('web', 'cli', 'vscode').
+
+    Returns:
+        Confirmation with note count.
     """
     try:
-        pr = await gh.create_pr(
-            params.owner, params.repo,
-            params.title, params.head, params.base,
-            params.body, params.draft,
-        )
-        draft_note = " (draft)" if pr.get("draft") else ""
+        session = await ss.append_note(params.session_id, params.content, source=params.source)
+        note_count = len(session["notes"])
         return (
-            f"✅ PR #{pr['number']} created{draft_note}: **{pr['title']}**\n"
-            f"`{params.head}` → `{params.base}`\n"
-            f"URL: {pr['html_url']}"
+            f"Note appended to `{params.session_id}` (total notes: {note_count}).\n"
+            f"**Timestamp:** {session['notes'][-1]['timestamp']} | **Source:** {params.source}"
         )
+    except FileNotFoundError:
+        return _error(f"Session '{params.session_id}' not found. Use session_write to create it first.")
     except Exception as e:
         return _error(str(e))
 
 
 @mcp.tool(
-    name="github_merge_pr",
-    annotations={"title": "Merge Pull Request", "readOnlyHint": False, "destructiveHint": True},
+    name="session_delete",
+    annotations={
+        "title": "Delete Session",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
 )
-async def github_merge_pr(params: GHPRMergeInput) -> str:
+async def session_delete(params: SessionDeleteInput) -> str:
     """
-    Merge a pull request.
+    Permanently delete a session from the store.
 
     Args:
-        params.pr_number: PR number to merge.
-        params.method: 'merge', 'squash', or 'rebase' (default: 'squash').
+        params.session_id: Session ID to delete.
+
+    Returns:
+        Confirmation or not-found message.
     """
     try:
-        result = await gh.merge_pr(params.owner, params.repo, params.pr_number, params.method)
-        sha = result.get("sha", "")[:7]
-        return (
-            f"✅ PR #{params.pr_number} merged ({params.method}).\n"
-            f"Merge commit: `{sha}`\n"
-            f"Message: {result.get('message', '')}"
-        )
+        deleted = await ss.delete_session(params.session_id)
+        if deleted:
+            return f"Session `{params.session_id}` deleted."
+        return f"Session `{params.session_id}` not found — nothing deleted."
     except Exception as e:
         return _error(str(e))
 
 
-# ---------------------------------------------------------------------------
-# Tools — Issues
-# ---------------------------------------------------------------------------
-
 @mcp.tool(
-    name="github_list_issues",
-    annotations={"title": "List GitHub Issues", "readOnlyHint": True, "destructiveHint": False},
+    name="session_search",
+    annotations={
+        "title": "Search Sessions",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
 )
-async def github_list_issues(params: GHRepoInput, state: str = "open") -> str:
+async def session_search(params: SessionSearchInput) -> str:
     """
-    List issues in a repository (excludes pull requests).
+    Search sessions by keyword across title, context, notes, and tags.
 
     Args:
-        state: 'open', 'closed', or 'all'.
+        params.query: Keyword to search for.
+
+    Returns:
+        List of matching sessions with a context snippet.
     """
     try:
-        issues = await gh.list_issues(params.owner, params.repo, state)
-        if not issues:
-            return f"No {state} issues found in `{params.repo}`."
-        lines = [f"## {state.capitalize()} Issues in `{params.repo}`", "",
-                 "| # | Title | Author | Labels | Date |",
-                 "|---|-------|--------|--------|------|"]
-        for i in issues:
-            labels = ", ".join(i["labels"]) or "-"
-            lines.append(
-                f"| [#{i['number']}]({i['url']}) "
-                f"| {i['title'][:50]} "
-                f"| {i['author']} "
-                f"| {labels} "
-                f"| {i['created_at'][:10]} |"
-            )
+        results = await ss.search_sessions(params.query)
+        if not results:
+            return f"No sessions found matching '{params.query}'."
+
+        lines = [f"## Search results for '{params.query}' ({len(results)} found)", ""]
+        for r in results:
+            lines.append(f"### `{r['session_id']}` — {r['title']}")
+            lines.append(f"*Updated: {r['updated_at']}*")
+            lines.append(f"> {r['snippet']}")
+            lines.append("")
         return "\n".join(lines)
     except Exception as e:
         return _error(str(e))
 
-
-@mcp.tool(
-    name="github_create_issue",
-    annotations={"title": "Create GitHub Issue", "readOnlyHint": False, "destructiveHint": False},
-)
-async def github_create_issue(params: GHIssueCreateInput) -> str:
-    """
-    Create a new issue in a repository.
-
-    Args:
-        params.title: Issue title.
-        params.body: Issue description.
-        params.labels: List of label names.
-    """
-    try:
-        issue = await gh.create_issue(params.owner, params.repo, params.title, params.body, params.labels)
-        return (
-            f"✅ Issue #{issue['number']} created: **{issue['title']}**\n"
-            f"URL: {issue['html_url']}"
-        )
-    except Exception as e:
-        return _error(str(e))
-
-
-# ---------------------------------------------------------------------------
-# Tools — GitHub Actions
-# ---------------------------------------------------------------------------
-
-@mcp.tool(
-    name="github_list_workflows",
-    annotations={"title": "List GitHub Actions Workflows", "readOnlyHint": True, "destructiveHint": False},
-)
-async def github_list_workflows(params: GHRepoInput) -> str:
-    """List all GitHub Actions workflows in a repository."""
-    try:
-        workflows = await gh.list_workflows(params.owner, params.repo)
-        if not workflows:
-            return f"No workflows found in `{params.repo}`."
-        lines = [f"## Workflows in `{params.repo}`", ""]
-        for w in workflows:
-            lines.append(f"- `{w['path']}` — **{w['name']}** (ID: {w['id']}, state: {w['state']})")
-        return "\n".join(lines)
-    except Exception as e:
-        return _error(str(e))
-
-
-@mcp.tool(
-    name="github_list_workflow_runs",
-    annotations={"title": "List GitHub Actions Runs", "readOnlyHint": True, "destructiveHint": False},
-)
-async def github_list_workflow_runs(params: GHWorkflowRunInput) -> str:
-    """
-    List recent GitHub Actions workflow runs.
-
-    Args:
-        params.workflow_id: Workflow filename or ID. Omit to list all runs.
-        params.per_page: Number of runs to return (default 10).
-    """
-    try:
-        runs = await gh.list_workflow_runs(params.owner, params.repo, params.workflow_id, params.per_page)
-        if not runs:
-            return "No workflow runs found."
-        lines = ["| Run | Workflow | Status | Branch | Commit | Date |",
-                 "|-----|----------|--------|--------|--------|------|"]
-        for r in runs:
-            status_icon = {"success": "✅", "failure": "❌", "cancelled": "⚠️"}.get(r.get("conclusion") or "", "🔄")
-            lines.append(
-                f"| [{r['id']}]({r['url']}) "
-                f"| {r['name']} "
-                f"| {status_icon} {r.get('conclusion') or r['status']} "
-                f"| `{r['branch']}` "
-                f"| `{r['commit']}` "
-                f"| {r['created_at'][:10]} |"
-            )
-        return "\n".join(lines)
-    except Exception as e:
-        return _error(str(e))
-
-
-@mcp.tool(
-    name="github_trigger_workflow",
-    annotations={"title": "Trigger GitHub Actions Workflow", "readOnlyHint": False, "destructiveHint": False},
-)
-async def github_trigger_workflow(params: GHTriggerWorkflowInput) -> str:
-    """
-    Manually trigger a GitHub Actions workflow (workflow_dispatch).
-
-    The workflow must have 'workflow_dispatch' trigger in its YAML.
-
-    Args:
-        params.workflow_id: Workflow filename (e.g. 'deploy.yml').
-        params.ref: Branch or tag to run on (default: 'main').
-        params.inputs: Optional workflow input parameters as dict.
-    """
-    try:
-        ok = await gh.trigger_workflow(params.owner, params.repo, params.workflow_id, params.ref, params.inputs)
-        if ok:
-            inputs_note = f" with inputs: {params.inputs}" if params.inputs else ""
-            return (
-                f"✅ Workflow `{params.workflow_id}` triggered on `{params.ref}`{inputs_note}.\n"
-                f"Check progress: https://github.com/{params.owner or config.GITHUB_DEFAULT_OWNER}/{params.repo}/actions"
-            )
-        return _error("Workflow trigger failed — check workflow_id and that 'workflow_dispatch' trigger is configured.")
-    except Exception as e:
-        return _error(str(e))
 
 # ---------------------------------------------------------------------------
 # Entry point
