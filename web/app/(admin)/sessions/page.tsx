@@ -35,7 +35,7 @@ export default function SessionsPage() {
   const fetchSessions = useCallback(async () => {
     setLoading(true)
     const q = new URLSearchParams({ search, source, page: String(page) })
-    const res = await fetch(`${BASE}/api/sessions?${q}`)
+    const res = await fetch(`${API_BASE}/api/sessions?${q}`)
     const data = await res.json()
     setRows(data.rows)
     setTotal(data.total)
@@ -46,14 +46,14 @@ export default function SessionsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm(`Delete session "${id}"?`)) return
-    await fetch(`${BASE}/api/sessions/${id}`, { method: 'DELETE' })
+    await fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' })
     fetchSessions()
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreating(true)
-    await fetch(`${BASE}/api/sessions`, {
+    await fetch(`${API_BASE}/api/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: newId, title: newTitle, source: newSource }),

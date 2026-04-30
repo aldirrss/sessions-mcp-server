@@ -25,7 +25,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ slug: st
   const [saving, setSaving] = useState(false)
 
   const fetchSkill = useCallback(async () => {
-    const res = await fetch(`${BASE}/api/skills/${slug}`)
+    const res = await fetch(`${API_BASE}/api/skills/${slug}`)
     if (!res.ok) { router.push("/skills"); return }
     const data = await res.json()
     setSkill(data)
@@ -43,7 +43,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ slug: st
 
   async function handleSave() {
     setSaving(true)
-    await fetch(`${BASE}/api/skills/${slug}`, {
+    await fetch(`${API_BASE}/api/skills/${slug}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -59,7 +59,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ slug: st
 
   async function handleDelete() {
     if (!confirm(`Delete skill "${slug}" permanently?`)) return
-    await fetch(`${BASE}/api/skills/${slug}`, { method: 'DELETE' })
+    await fetch(`${API_BASE}/api/skills/${slug}`, { method: 'DELETE' })
     router.push("/skills")
   }
 
