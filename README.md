@@ -396,16 +396,16 @@ No local Python environment needed.
 Add the server globally (available in all projects):
 
 ```bash
-claude mcp add --transport http --scope global mcp-lema https://mcp.yourdomain.com/mcp \
+claude mcp add --transport http --scope user mcp-lema https://mcp.yourdomain.com/mcp \
   --header "X-API-Key: your-mcp-api-key-here"
 ```
 
 > **Scope matters**:
-> - `--scope global` → stored in `~/.claude.json` under a global key, available everywhere.
-> - Without `--scope global` (default: `local`) → stored scoped to the current directory.
+> - `--scope user` → stored in `~/.claude.json`, available in all projects on this machine.
+> - `--scope local` (default) → stored scoped to the current directory.
 >   The MCP will only be active when Claude Code is opened from that directory.
 >
-> Always use `--scope global` for a VPS MCP you want available in every project.
+> Always use `--scope user` for a VPS MCP you want available in every project.
 
 Verify connection:
 
