@@ -12,6 +12,7 @@ services:
       MCP_API_KEY: ${MCP_API_KEY}
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "8765"
+      MCP_EXTERNAL_HOST: ${MCP_EXTERNAL_HOST:-mcp.lemacore.com}
       COMPOSE_BASE_DIR: /opt
       LOG_MAX_LINES: "200"
       DOCKER_TIMEOUT: "60"

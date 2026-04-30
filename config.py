@@ -22,6 +22,11 @@ MCP_PORT: int = int(os.environ.get("MCP_PORT", "8765"))
 # API key — required, used to authenticate claude.ai web requests
 MCP_API_KEY: str = _require("MCP_API_KEY")
 
+# External hostname used by reverse proxy (Cloudflare Tunnel / nginx).
+# Added to MCP transport security allowlist so Host header is accepted.
+# Comma-separated if multiple: "mcp.lemacore.com,mcp2.lemacore.com"
+MCP_EXTERNAL_HOST: str = os.environ.get("MCP_EXTERNAL_HOST", "")
+
 # Docker Compose projects base directory on this host
 # Each subdirectory is treated as a separate compose project.
 COMPOSE_BASE_DIR: str = os.environ.get("COMPOSE_BASE_DIR", "/opt/stacks")

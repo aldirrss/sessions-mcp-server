@@ -14,13 +14,43 @@ import logging
 import sys
 from typing import Optional
 
+import config  # must be imported before patching
+
+# ---------------------------------------------------------------------------
+# Patch MCP transport security BEFORE importing FastMCP.
+# By default the MCP SDK only allows Host: localhost/127.0.0.1.
+# Running behind a reverse proxy (Cloudflare Tunnel, nginx) sends the real
+# domain as the Host header, which triggers a 421 Misdirected Request.
+# We whitelist the configured external host here.
+# ---------------------------------------------------------------------------
+try:
+    import mcp.server.transport_security as _sec
+
+    _external_host = getattr(config, "MCP_EXTERNAL_HOST", "")
+    _extra = {h.strip() for h in _external_host.split(",") if h.strip()}
+    _extra.update({"localhost", "127.0.0.1", "::1"})
+
+    # The SDK uses one of several attribute names depending on version
+    for _attr in ("ALLOWED_HOSTS", "allowed_hosts", "VALID_HOSTS", "_allowed_hosts"):
+        _val = getattr(_sec, _attr, None)
+        if isinstance(_val, set):
+            _val.update(_extra)
+            break
+        if isinstance(_val, list):
+            _val.extend(_extra - set(_val))
+            break
+    else:
+        # Fallback: set the attribute directly with the most common name
+        setattr(_sec, "ALLOWED_HOSTS", _extra)
+except Exception as _e:
+    pass  # non-fatal — server will log 421 warnings but may still work
+
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-import config
 import docker_client
 
 # ---------------------------------------------------------------------------
