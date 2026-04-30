@@ -13,7 +13,7 @@ import httpx
 
 import config
 
-_logger = logging.getLogger("lm-docker-mcp.github")
+_logger = logging.getLogger("lm-mcp-ai.github")
 
 GITHUB_API = "https://api.github.com"
 TIMEOUT = 30.0

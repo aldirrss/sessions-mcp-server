@@ -1,4 +1,4 @@
-# lm-docker-mcp
+# lm-mcp-ai
 
 MCP (Model Context Protocol) server for managing Docker Compose stacks on a VPS,
 accessible from both **claude.ai web** and **Claude Code CLI (local)**.
@@ -33,7 +33,7 @@ accessible from both **claude.ai web** and **Claude Code CLI (local)**.
 │  └──────────┬───────────────────┘                          │
 │             │  HTTP localhost:8765                          │
 │  ┌──────────▼───────────────────┐                          │
-│  │  lm-docker-mcp (FastMCP)     │  ← this project         │
+│  │  lm-mcp-ai (FastMCP)     │  ← this project         │
 │  │  transport: streamable-http  │                          │
 │  │  path: /mcp                  │                          │
 │  └──────────┬───────────────────┘                          │
@@ -82,8 +82,8 @@ newgrp docker
 ### 2. Clone the repository
 
 ```bash
-git clone https://github.com/your-org/lm-docker-mcp.git /opt/lm-docker-mcp
-cd /opt/lm-docker-mcp
+git clone https://github.com/your-org/lm-mcp-ai.git /opt/lm-mcp-ai
+cd /opt/lm-mcp-ai
 ```
 
 ### 3. Identify your compose projects base directory
@@ -196,7 +196,7 @@ sudo apt install -y nginx certbot python3-certbot-nginx
 sudo certbot --nginx -d mcp.yourdomain.com
 ```
 
-Create `/etc/nginx/sites-available/lm-docker-mcp`:
+Create `/etc/nginx/sites-available/lm-mcp-ai`:
 
 ```nginx
 server {
@@ -219,7 +219,7 @@ server {
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/lm-docker-mcp /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/lm-mcp-ai /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -252,7 +252,7 @@ Go to Cloudflare dashboard → **SSL/TLS → Overview** → select **Flexible**.
 sudo apt install -y nginx
 ```
 
-Create `/etc/nginx/sites-available/lm-docker-mcp`:
+Create `/etc/nginx/sites-available/lm-mcp-ai`:
 
 ```nginx
 server {
@@ -289,7 +289,7 @@ server {
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/lm-docker-mcp /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/lm-mcp-ai /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -316,14 +316,14 @@ sudo dpkg -i cloudflared.deb
 
 # Authenticate and create tunnel
 cloudflared tunnel login
-cloudflared tunnel create lm-docker-mcp
-cloudflared tunnel route dns lm-docker-mcp mcp.yourdomain.com
+cloudflared tunnel create lm-mcp-ai
+cloudflared tunnel route dns lm-mcp-ai mcp.yourdomain.com
 ```
 
 Create `~/.cloudflared/config.yml`:
 
 ```yaml
-tunnel: lm-docker-mcp
+tunnel: lm-mcp-ai
 credentials-file: /root/.cloudflared/<tunnel-id>.json
 
 ingress:
@@ -442,7 +442,7 @@ The config file is `~/.claude.json`. Find or create the `"mcpServers"` key insid
 If you want to manage Docker on your local machine (not the VPS):
 
 ```bash
-cd /path/to/lm-docker-mcp
+cd /path/to/lm-mcp-ai
 pip install -r requirements.txt
 cp .env.example .env && nano .env
 ```
@@ -450,7 +450,7 @@ cp .env.example .env && nano .env
 Add via CLI:
 
 ```bash
-claude mcp add docker-local --command python --args /path/to/lm-docker-mcp/server.py \
+claude mcp add docker-local --command python --args /path/to/lm-mcp-ai/server.py \
   --env MCP_API_KEY=any-value-for-stdio \
   --env COMPOSE_BASE_DIR=/your/local/stacks
 ```
@@ -463,7 +463,7 @@ Or add manually to `~/.claude/claude_mcp_config.json`:
     "docker-local": {
       "type": "stdio",
       "command": "python",
-      "args": ["/path/to/lm-docker-mcp/server.py"],
+      "args": ["/path/to/lm-mcp-ai/server.py"],
       "env": {
         "MCP_API_KEY": "any-value-for-stdio",
         "COMPOSE_BASE_DIR": "/your/local/stacks"

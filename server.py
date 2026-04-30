@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-lm-docker-mcp — MCP Server for Docker Compose management on VPS.
+lm-mcp-ai — MCP Server for Docker Compose management on VPS.
 
 Transport : Streamable HTTP  (connects to claude.ai web and Claude Code CLI)
 Auth      : Two accepted methods (checked in order):
@@ -51,7 +51,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-_logger = logging.getLogger("lm-docker-mcp")
+_logger = logging.getLogger("lm-mcp-ai")
 
 
 # ---------------------------------------------------------------------------
@@ -1142,7 +1142,7 @@ if __name__ == "__main__":
     import uvicorn
 
     _logger.info(
-        "Starting lm-docker-mcp on %s:%d (streamable_http)",
+        "Starting lm-mcp-ai on %s:%d (streamable_http)",
         config.MCP_HOST,
         config.MCP_PORT,
     )
