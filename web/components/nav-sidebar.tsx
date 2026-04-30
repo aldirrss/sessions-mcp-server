@@ -1,25 +1,24 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { LayoutDashboard, MessageSquare, BookOpen, LogOut } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
-const BASE = '/panel/mcp-admin'
+const API_BASE = '/panel/mcp-admin'
 
 const navItems = [
-  { href: BASE, label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: `${BASE}/sessions`, label: 'Sessions', icon: MessageSquare },
-  { href: `${BASE}/skills`, label: 'Skills', icon: BookOpen },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/sessions', label: 'Sessions', icon: MessageSquare },
+  { href: '/skills', label: 'Skills', icon: BookOpen },
 ]
 
 export default function NavSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
 
   async function handleLogout() {
-    await fetch(`${BASE}/api/auth/logout`, { method: 'POST' })
-    window.location.href = `${BASE}/login`
+    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' })
+    window.location.href = `${API_BASE}/login`
   }
 
   return (

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Trash2, Plus, BookOpen } from 'lucide-react'
 
-const BASE = '/panel/mcp-admin'
+const API_BASE = '/panel/mcp-admin'
 
 type Note = { id: number; content: string; source: string; created_at: string }
 type Skill = { slug: string; name: string; category: string | null; used_at: string }
@@ -28,7 +28,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
   const fetchSession = useCallback(async () => {
     const res = await fetch(`${BASE}/api/sessions/${id}`)
-    if (!res.ok) { router.push(`${BASE}/sessions`); return }
+    if (!res.ok) { router.push("/sessions"); return }
     const data = await res.json()
     setSession(data)
     setTitle(data.title)
@@ -56,7 +56,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   async function handleDelete() {
     if (!confirm(`Delete session "${id}" and all its notes?`)) return
     await fetch(`${BASE}/api/sessions/${id}`, { method: 'DELETE' })
-    router.push(`${BASE}/sessions`)
+    router.push("/sessions")
   }
 
   async function handleAddNote(e: React.FormEvent) {
@@ -78,7 +78,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
-        <Link href={`${BASE}/sessions`} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+        <Link href="/sessions" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Sessions
         </Link>
         <button onClick={handleDelete} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
@@ -133,7 +133,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             {session.skills.map((sk) => (
               <Link
                 key={sk.slug}
-                href={`${BASE}/skills/${sk.slug}`}
+                href={`/skills/${sk.slug}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-lg text-sm font-medium transition-colors"
               >
                 {sk.name}

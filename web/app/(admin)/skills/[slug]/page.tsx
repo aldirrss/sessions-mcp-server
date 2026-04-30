@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Trash2, Clock, MessageSquare } from 'lucide-react'
 
-const BASE = '/panel/mcp-admin'
+const API_BASE = '/panel/mcp-admin'
 
 type Version = { id: number; slug: string; changed_at: string }
 type SessionRef = { session_id: string; title: string; source: string; used_at: string }
@@ -26,7 +26,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ slug: st
 
   const fetchSkill = useCallback(async () => {
     const res = await fetch(`${BASE}/api/skills/${slug}`)
-    if (!res.ok) { router.push(`${BASE}/skills`); return }
+    if (!res.ok) { router.push("/skills"); return }
     const data = await res.json()
     setSkill(data)
     setForm({
@@ -60,7 +60,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ slug: st
   async function handleDelete() {
     if (!confirm(`Delete skill "${slug}" permanently?`)) return
     await fetch(`${BASE}/api/skills/${slug}`, { method: 'DELETE' })
-    router.push(`${BASE}/skills`)
+    router.push("/skills")
   }
 
   if (loading) return <div className="text-sm text-gray-400 p-8">Loading…</div>
@@ -69,7 +69,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ slug: st
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
-        <Link href={`${BASE}/skills`} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+        <Link href="/skills" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Skills
         </Link>
         <button onClick={handleDelete} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
@@ -162,7 +162,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ slug: st
             {skill.sessions.map((s) => (
               <Link
                 key={s.session_id}
-                href={`${BASE}/sessions/${s.session_id}`}
+                href={`/sessions/${s.session_id}`}
                 className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <div>

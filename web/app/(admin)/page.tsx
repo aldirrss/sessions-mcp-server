@@ -36,7 +36,7 @@ async function getDashboardData() {
   return { stats: stats[0], topSkills, recentSessions }
 }
 
-const BASE = '/panel/mcp-admin'
+const BASE = ''
 
 function StatCard({ label, value, icon: Icon, color }: {
   label: string; value: number; icon: React.ElementType; color: string
