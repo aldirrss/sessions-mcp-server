@@ -74,10 +74,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
 # FastMCP server
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP(
-    "docker_mcp",
-    middleware=[ApiKeyMiddleware],
-)
+mcp = FastMCP("docker_mcp")
 
 
 # ---------------------------------------------------------------------------
@@ -595,14 +592,22 @@ async def docker_exec(params: ExecInput) -> str:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import uvicorn
+
     _logger.info(
         "Starting lm-docker-mcp on %s:%d (streamable_http)",
         config.MCP_HOST,
         config.MCP_PORT,
     )
-    mcp.run(
-        transport="streamable-http",
+
+    # Get the Starlette ASGI app from FastMCP, then attach middleware to it.
+    # FastMCP.__init__() does not accept a 'middleware' kwarg in mcp>=1.x,
+    # so we add it after the app is created.
+    app = mcp.streamable_http_app()
+    app.add_middleware(ApiKeyMiddleware)
+
+    uvicorn.run(
+        app,
         host=config.MCP_HOST,
         port=config.MCP_PORT,
-        path="/mcp",
     )
