@@ -34,6 +34,14 @@ from starlette.responses import Response
 
 import docker_client
 
+# ===========================================================================
+# GitHub Tools
+# Requires: GITHUB_TOKEN and GITHUB_DEFAULT_OWNER in .env
+# ===========================================================================
+
+import github_client as gh
+from typing import Optional as Opt
+
 # ---------------------------------------------------------------------------
 # Logging — use stderr so stdout stays clean for MCP protocol
 # ---------------------------------------------------------------------------
@@ -619,74 +627,6 @@ async def docker_exec(params: ExecInput) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import uvicorn
-
-    _logger.info(
-        "Starting lm-docker-mcp on %s:%d (streamable_http)",
-        config.MCP_HOST,
-        config.MCP_PORT,
-    )
-
-    # Disable DNS rebinding protection — we run behind a trusted reverse proxy
-    # (nginx) that enforces TLS and rewrites Host. Auth is handled by
-    # ApiKeyMiddleware. Leaving protection ON with empty allowed_hosts blocks
-    # every request including localhost.
-    from mcp.server.transport_security import TransportSecurityMiddleware, TransportSecuritySettings
-
-    # Get the Starlette ASGI app from FastMCP, then attach middleware to it.
-    app = mcp.streamable_http_app()
-
-    # Disable DNS rebinding protection by patching the TransportSecurityMiddleware
-    # instance that FastMCP embeds in the app. We run behind a trusted nginx proxy
-    # (with Host rewrite to localhost) so this protection is redundant and
-    # conflicts with reverse-proxy deployments.
-    _disabled = TransportSecuritySettings(enable_dns_rebinding_protection=False)
-
-    def _patch_transport_security(obj, depth: int = 0) -> bool:
-        if depth > 15:
-            return False
-        if isinstance(obj, TransportSecurityMiddleware):
-            obj.settings = _disabled
-            _logger.info("TransportSecurityMiddleware: DNS rebinding protection disabled")
-            return True
-        for attr in ("app", "_app", "middleware", "handler"):
-            child = getattr(obj, attr, None)
-            if child is not None and _patch_transport_security(child, depth + 1):
-                return True
-        if hasattr(obj, "__dict__"):
-            for child in obj.__dict__.values():
-                if child is not obj and _patch_transport_security(child, depth + 1):
-                    return True
-        return False
-
-    if not _patch_transport_security(app):
-        _logger.warning(
-            "Could not locate TransportSecurityMiddleware — "
-            "requests with external Host headers may return 421"
-        )
-
-    app.add_middleware(ApiKeyMiddleware)
-
-    uvicorn.run(
-        app,
-        host=config.MCP_HOST,
-        port=config.MCP_PORT,
-    )
-
-# ===========================================================================
-# GitHub Tools
-# Requires: GITHUB_TOKEN and GITHUB_DEFAULT_OWNER in .env
-# ===========================================================================
-
-import github_client as gh
-from typing import Optional as Opt
-
-
-# ---------------------------------------------------------------------------
 # Pydantic models for GitHub tools
 # ---------------------------------------------------------------------------
 
@@ -1193,3 +1133,53 @@ async def github_trigger_workflow(params: GHTriggerWorkflowInput) -> str:
         return _error("Workflow trigger failed — check workflow_id and that 'workflow_dispatch' trigger is configured.")
     except Exception as e:
         return _error(str(e))
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import uvicorn
+
+    _logger.info(
+        "Starting lm-docker-mcp on %s:%d (streamable_http)",
+        config.MCP_HOST,
+        config.MCP_PORT,
+    )
+
+    from mcp.server.transport_security import TransportSecurityMiddleware, TransportSecuritySettings
+
+    app = mcp.streamable_http_app()
+
+    _disabled = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+
+    def _patch_transport_security(obj, depth: int = 0) -> bool:
+        if depth > 15:
+            return False
+        if isinstance(obj, TransportSecurityMiddleware):
+            obj.settings = _disabled
+            _logger.info("TransportSecurityMiddleware: DNS rebinding protection disabled")
+            return True
+        for attr in ("app", "_app", "middleware", "handler"):
+            child = getattr(obj, attr, None)
+            if child is not None and _patch_transport_security(child, depth + 1):
+                return True
+        if hasattr(obj, "__dict__"):
+            for child in obj.__dict__.values():
+                if child is not obj and _patch_transport_security(child, depth + 1):
+                    return True
+        return False
+
+    if not _patch_transport_security(app):
+        _logger.warning(
+            "Could not locate TransportSecurityMiddleware — "
+            "requests with external Host headers may return 421"
+        )
+
+    app.add_middleware(ApiKeyMiddleware)
+
+    uvicorn.run(
+        app,
+        host=config.MCP_HOST,
+        port=config.MCP_PORT,
+    )
