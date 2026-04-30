@@ -60,7 +60,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3100:3000"
     environment:
       DATABASE_URL:     postgresql://${POSTGRES_USER:-mcp_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mcp_sessions}
       ADMIN_USER:       ${ADMIN_USER}
