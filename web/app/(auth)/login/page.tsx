@@ -23,8 +23,7 @@ export default function LoginPage() {
     })
 
     if (res.ok) {
-      router.push('/panel/mcp-admin')
-      router.refresh()
+      window.location.href = '/panel/mcp-admin'
     } else {
       const data = await res.json()
       setError(data.error ?? 'Invalid credentials')

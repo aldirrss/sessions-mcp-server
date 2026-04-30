@@ -19,8 +19,7 @@ export default function NavSidebar() {
 
   async function handleLogout() {
     await fetch(`${BASE}/api/auth/logout`, { method: 'POST' })
-    router.push(`${BASE}/login`)
-    router.refresh()
+    window.location.href = `${BASE}/login`
   }
 
   return (

@@ -13,7 +13,8 @@ export async function middleware(request: NextRequest) {
   const session = await getIronSession<SessionData>(request, res, sessionOptions)
 
   if (!session.isAdmin) {
-    const loginUrl = new URL('/login', request.url)
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = '/panel/mcp-admin/login'
     return NextResponse.redirect(loginUrl)
   }
 
