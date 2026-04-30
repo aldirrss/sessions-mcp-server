@@ -7,12 +7,12 @@ services:
       - "127.0.0.1:8765:8765"      # Bind loopback only — expose via reverse proxy (nginx/Cloudflare)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # Read-only Docker socket
-      - /opt/stacks:/opt/stacks:ro                     # Compose project dirs (read-only mount)
+      - /opt:/opt:ro                                   # Compose project dirs (read-only mount)
     environment:
       MCP_API_KEY: ${MCP_API_KEY}
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "8765"
-      COMPOSE_BASE_DIR: /opt/stacks
+      COMPOSE_BASE_DIR: /opt
       LOG_MAX_LINES: "200"
       DOCKER_TIMEOUT: "60"
     group_add:
