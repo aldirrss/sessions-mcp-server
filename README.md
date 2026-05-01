@@ -15,12 +15,13 @@ all backed by PostgreSQL.
 3. [Installation](#installation)
 4. [Environment Variables](#environment-variables)
 5. [Reverse Proxy Setup](#reverse-proxy-setup)
-6. [Connecting Clients](#connecting-clients)
-7. [URL Structure](#url-structure)
-8. [Tools Reference](#tools-reference)
-9. [Web Panel](#web-panel)
-10. [Auto-Vacuum](#auto-vacuum)
-11. [Security](#security)
+6. [User Onboarding](#user-onboarding)
+7. [Connecting Clients](#connecting-clients)
+8. [URL Structure](#url-structure)
+9. [Tools Reference](#tools-reference)
+10. [Web Panel](#web-panel)
+11. [Auto-Vacuum](#auto-vacuum)
+12. [Security](#security)
 
 ---
 
@@ -202,6 +203,44 @@ server {
 
 > For Cloudflare DNS Proxy, use `listen 80;` and omit SSL directives.
 > For Cloudflare Tunnel, add `httpHostHeader: "localhost"` to the `/mcp` ingress rule.
+
+---
+
+## User Onboarding
+
+New users need an account and a Personal Access Token (PAT) before connecting any client.
+
+### Step 1 — Register
+
+Go to the registration page and create an account:
+
+```
+https://mcp.example.com/panel/mcp-user/register
+```
+
+Fill in **username**, **email**, and **password** (minimum 8 characters), then click **Create account**.
+
+### Step 2 — Save your token
+
+After registration, your first PAT is displayed **once** — copy it immediately.
+
+```
+lm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+> This token cannot be retrieved again. If lost, create a new one from the portal.
+
+### Step 3 — Connect a client
+
+Use the token as a Bearer header in your MCP client (see [Connecting Clients](#connecting-clients) below).
+
+### Managing tokens later
+
+Log in to the portal to create additional tokens, revoke old ones, or set your GitHub PAT:
+
+```
+https://mcp.example.com/panel/mcp-user/login
+```
 
 ---
 
