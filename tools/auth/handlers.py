@@ -2,12 +2,12 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
-from .context import get_current_user
-from .models import TokenCreateInput, TokenRevokeInput, UserSetRoleInput, UserSetActiveInput
-from .store import (
+from auth.context import get_current_user
+from auth.store import (
     create_token, list_tokens, revoke_token,
     get_user, list_users, set_user_role, set_user_active,
 )
+from .models import TokenCreateInput, TokenRevokeInput, UserSetRoleInput, UserSetActiveInput
 
 _logger = logging.getLogger("lm-mcp-ai.auth")
 

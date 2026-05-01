@@ -23,6 +23,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
 import config
+import db
 from .store import authenticate_user, create_oauth_code, exchange_oauth_code, create_token
 
 _logger = logging.getLogger("lm-mcp-ai.oauth")
@@ -297,7 +298,3 @@ def _esc(s: str) -> str:
 def _build_redirect(base_uri: str, params: dict) -> str:
     cleaned = {k: v for k, v in params.items() if v}
     return base_uri + ("&" if "?" in base_uri else "?") + urllib.parse.urlencode(cleaned)
-
-
-# late import to avoid circular at module load
-import db

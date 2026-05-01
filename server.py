@@ -17,7 +17,6 @@ OAuth 2.0 Authorization Server (MCP spec):
 """
 
 import asyncio
-import json
 import logging
 import sys
 
@@ -32,12 +31,9 @@ async def _validate_all(self, request, is_post=False):
 _ts.TransportSecurityMiddleware.validate_request = _validate_all
 
 from mcp.server.fastmcp import FastMCP
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
 
 import db
-from tools.auth.context import set_current_user
+from auth.middleware import UserAuthMiddleware
 from tools.docker import register as register_docker
 from tools.sessions import register as register_sessions
 from tools.skills import register as register_skills
@@ -56,83 +52,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 _logger = logging.getLogger("lm-mcp-ai")
-
-
-# ---------------------------------------------------------------------------
-# Auth middleware — per-user Bearer token (OAuth) or master API key
-# ---------------------------------------------------------------------------
-
-class UserAuthMiddleware(BaseHTTPMiddleware):
-    """
-    Authenticate requests on /mcp paths using:
-      1. Authorization: Bearer <token>  — user PAT or OAuth token
-      2. ?token=<token>                 — query param fallback (claude.ai web)
-      3. X-API-Key / ?key=              — legacy master key (backward compat)
-
-    Public paths (no auth required): /.well-known/*, /oauth/*, /health
-    WWW-Authenticate header is set on 401 so MCP clients auto-discover OAuth server.
-    """
-
-    _OPEN_PREFIXES = ("/.well-known/", "/oauth/", "/health")
-
-    async def dispatch(self, request: Request, call_next) -> Response:
-        path = request.url.path
-
-        if any(path.startswith(p) for p in self._OPEN_PREFIXES):
-            return await call_next(request)
-
-        if not (path.startswith("/mcp") or path == "/"):
-            return await call_next(request)
-
-        token = (
-            self._bearer(request)
-            or request.query_params.get("token")
-            or request.headers.get("X-API-Key")
-            or request.headers.get("x-api-key")
-            or request.query_params.get("key")
-        )
-
-        if not token:
-            return self._unauthorized()
-
-        # Master key (backward compat / admin operations)
-        if config.MCP_API_KEY and token == config.MCP_API_KEY:
-            set_current_user({"id": None, "username": "admin", "role": "admin", "email": ""})
-            return await call_next(request)
-
-        # Per-user token from DB
-        from tools.auth.store import validate_token
-        user = await validate_token(token)
-        if not user:
-            return self._unauthorized()
-
-        set_current_user(user)
-        try:
-            return await call_next(request)
-        finally:
-            set_current_user(None)
-
-    @staticmethod
-    def _bearer(request: Request) -> str:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            return auth[7:].strip()
-        return ""
-
-    @staticmethod
-    def _unauthorized() -> Response:
-        base = config.MCP_EXTERNAL_URL.rstrip("/")
-        return Response(
-            content=json.dumps({"error": "Unauthorized", "error_description": "Valid Bearer token required"}),
-            status_code=401,
-            media_type="application/json",
-            headers={
-                "WWW-Authenticate": (
-                    f'Bearer realm="lm-mcp-ai", '
-                    f'resource_metadata="{base}/.well-known/oauth-protected-resource"'
-                )
-            },
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +75,7 @@ register_auth(mcp)
 if __name__ == "__main__":
     import uvicorn
     from contextlib import asynccontextmanager
-    from tools.auth.oauth import oauth_routes
+    from auth.oauth import oauth_routes
 
     _logger.info(
         "Starting lm-mcp-ai on %s:%d (streamable_http)",
