@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, MessageSquare, BookOpen, LogOut } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, BookOpen, Settings2, LogOut } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 const API_BASE = '/panel/mcp-admin'
@@ -11,6 +11,7 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/sessions', label: 'Sessions', icon: MessageSquare },
   { href: '/skills', label: 'Skills', icon: BookOpen },
+  { href: '/config', label: 'Config', icon: Settings2 },
 ]
 
 export default function NavSidebar() {

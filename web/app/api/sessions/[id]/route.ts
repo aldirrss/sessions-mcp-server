@@ -34,15 +34,29 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params
   const body = await req.json()
 
-  const [updated] = await sql`
-    UPDATE sessions SET
-      title   = COALESCE(${body.title ?? null}, title),
-      context = COALESCE(${body.context ?? null}, context),
-      source  = COALESCE(${body.source ?? null}, source),
-      tags    = COALESCE(${body.tags ?? null}, tags)
-    WHERE session_id = ${id}
-    RETURNING session_id, title, source, tags, updated_at
-  `
+  const hasRepoUrl = Object.hasOwn(body, 'repo_url')
+
+  let updated: Record<string, unknown> | undefined
+
+  if (hasRepoUrl) {
+    const repoUrl: string | null = body.repo_url || null
+    ;[updated] = await sql`
+      UPDATE sessions SET
+        title    = COALESCE(${body.title ?? null}, title),
+        tags     = COALESCE(${body.tags ?? null}, tags),
+        repo_url = ${repoUrl}
+      WHERE session_id = ${id}
+      RETURNING session_id, title, source, tags, repo_url, updated_at
+    `
+  } else {
+    ;[updated] = await sql`
+      UPDATE sessions SET
+        title = COALESCE(${body.title ?? null}, title),
+        tags  = COALESCE(${body.tags ?? null}, tags)
+      WHERE session_id = ${id}
+      RETURNING session_id, title, source, tags, repo_url, updated_at
+    `
+  }
 
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(updated)

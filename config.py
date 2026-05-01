@@ -35,3 +35,7 @@ DOCKER_TIMEOUT: int = int(os.environ.get("DOCKER_TIMEOUT", "60"))
 # PostgreSQL connection string for the session context store
 # Format: postgresql://user:password@host:port/dbname
 DATABASE_URL: str = _require("DATABASE_URL")
+
+# GitHub personal access token (optional) — enables higher rate limits and private repo access
+# Generate at: https://github.com/settings/tokens (scope: repo read-only)
+GITHUB_TOKEN: str = os.environ.get("GITHUB_TOKEN", "")

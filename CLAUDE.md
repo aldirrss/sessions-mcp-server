@@ -11,11 +11,23 @@ At the start of every conversation:
 1. Call `session_list` to see available sessions.
 2. If the user mentions a project, feature, or topic that matches a session ID or title,
    call `session_read` with that session ID to restore full context before responding.
+3. Call `config_list` to load any dynamic project instructions stored in the database.
+   Apply any `claude_*` config keys as additional behavioral instructions for this conversation.
 
 During the conversation:
 - Call `session_append` to log important decisions, blockers, or progress updates.
 - Call `session_write` before ending a conversation that has unfinished work,
   saving the current state so it can be resumed from any client.
+
+---
+
+## GitHub Integration
+
+When working on a session that has a linked GitHub repository:
+- Call `repo_get_context` at the start to fetch the current default branch,
+  recent commits, and open PRs — this gives real-time repo state.
+- Use `session_link_repo` to link a repo URL to a session.
+- Use `session_unlink_repo` to remove the link.
 
 ---
 
@@ -77,3 +89,9 @@ use `skill_search` or `skill_list` instead of relying on memory.
 `skill_write`, `skill_read`, `skill_list`, `skill_search`, `skill_delete`,
 `skill_sync`, `skill_track`, `session_skills_list`, `skill_sessions_list`,
 `skill_stats`, `skill_recommend`
+
+### GitHub Integration
+`session_link_repo`, `session_unlink_repo`, `repo_get_context`
+
+### Config
+`config_write`, `config_read`, `config_list`, `config_delete`

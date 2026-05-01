@@ -118,6 +118,40 @@ _DDL_STEPS = [
     """,
 
     # -----------------------------------------------------------------------
+    # Schema migrations — idempotent ALTER TABLE statements
+    # -----------------------------------------------------------------------
+
+    # Add repo_url column to sessions (GitHub Integration — Ide 1)
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repo_url TEXT",
+
+    # -----------------------------------------------------------------------
+    # Config table — key-value store for Claude behavior configuration (Ide 2)
+    # -----------------------------------------------------------------------
+
+    """
+    CREATE TABLE IF NOT EXISTS config (
+        key         TEXT        PRIMARY KEY,
+        value       TEXT        NOT NULL,
+        description TEXT        NOT NULL DEFAULT '',
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    # Trigger updated_at for config
+    """
+    DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'trg_config_updated_at'
+        ) THEN
+            CREATE TRIGGER trg_config_updated_at
+                BEFORE UPDATE ON config
+                FOR EACH ROW
+                EXECUTE FUNCTION fn_touch_updated_at();
+        END IF;
+    END; $$
+    """,
+
+    # -----------------------------------------------------------------------
     # Skills library
     # -----------------------------------------------------------------------
 

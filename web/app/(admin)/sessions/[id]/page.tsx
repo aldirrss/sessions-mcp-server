@@ -3,7 +3,7 @@
 import { use, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2, Plus, BookOpen } from 'lucide-react'
+import { ArrowLeft, Trash2, Plus, BookOpen, Github, ExternalLink, Unlink } from 'lucide-react'
 
 const API_BASE = '/panel/mcp-admin'
 
@@ -11,7 +11,7 @@ type Note = { id: number; content: string; source: string; created_at: string }
 type Skill = { slug: string; name: string; category: string | null; used_at: string }
 type Session = {
   session_id: string; title: string; context: string; source: string
-  tags: string[]; notes: Note[]; skills: Skill[]; updated_at: string
+  tags: string[]; repo_url: string | null; notes: Note[]; skills: Skill[]; updated_at: string
 }
 
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +22,9 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState('')
   const [tags, setTags] = useState('')
+  const [repoUrl, setRepoUrl] = useState('')
+  const [editingRepo, setEditingRepo] = useState(false)
+  const [savingRepo, setSavingRepo] = useState(false)
   const [noteContent, setNoteContent] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -33,6 +36,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     setSession(data)
     setTitle(data.title)
     setTags(data.tags.join(', '))
+    setRepoUrl(data.repo_url ?? '')
     setLoading(false)
   }, [id, router])
 
@@ -57,6 +61,30 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     if (!confirm(`Delete session "${id}" and all its notes?`)) return
     await fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' })
     router.push("/sessions")
+  }
+
+  async function handleSaveRepo() {
+    setSavingRepo(true)
+    await fetch(`${API_BASE}/api/sessions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_url: repoUrl.trim() || null }),
+    })
+    setSavingRepo(false)
+    setEditingRepo(false)
+    fetchSession()
+  }
+
+  async function handleUnlinkRepo() {
+    if (!confirm('Remove repository link from this session?')) return
+    setSavingRepo(true)
+    await fetch(`${API_BASE}/api/sessions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_url: null }),
+    })
+    setSavingRepo(false)
+    fetchSession()
   }
 
   async function handleAddNote(e: React.FormEvent) {
@@ -120,6 +148,52 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               ))}
             </div>
             <p className="text-xs text-gray-400 mt-2">Updated {new Date(session.updated_at).toLocaleString()}</p>
+          </div>
+        )}
+      </div>
+
+      {/* GitHub Repo */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+          <Github className="w-4 h-4 text-gray-500" /> GitHub Repository
+        </h2>
+        {editingRepo ? (
+          <div className="space-y-2">
+            <input
+              value={repoUrl}
+              onChange={e => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex gap-2">
+              <button onClick={handleSaveRepo} disabled={savingRepo}
+                className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-60">
+                {savingRepo ? 'Saving…' : 'Save'}
+              </button>
+              <button onClick={() => { setEditingRepo(false); setRepoUrl(session.repo_url ?? '') }}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+            </div>
+          </div>
+        ) : session.repo_url ? (
+          <div className="flex items-center justify-between gap-4">
+            <a href={session.repo_url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-mono min-w-0 truncate">
+              {session.repo_url} <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+            </a>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={() => setEditingRepo(true)}
+                className="text-xs text-blue-600 hover:underline">Edit</button>
+              <button onClick={handleUnlinkRepo}
+                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700">
+                <Unlink className="w-3.5 h-3.5" /> Unlink
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-400">No repository linked.</p>
+            <button onClick={() => setEditingRepo(true)}
+              className="text-sm text-blue-600 hover:underline">Link repo</button>
           </div>
         )}
       </div>
