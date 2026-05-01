@@ -85,9 +85,20 @@ if __name__ == "__main__":
 
     app = mcp.streamable_http_app()
 
-    # Inject OAuth routes into Starlette router BEFORE MCP catch-all
+    # Inject OAuth routes + browser redirect routes BEFORE MCP catch-all
     from starlette.routing import Route as StarletteRoute
-    app.router.routes = list(oauth_routes) + list(app.router.routes)
+    from starlette.responses import RedirectResponse as _Redirect
+
+    _user_login_url = config.MCP_EXTERNAL_URL.rstrip("/") + "/panel/mcp-user/login"
+
+    async def _redirect_to_portal(request):
+        return _Redirect(_user_login_url, status_code=302)
+
+    browser_routes = [
+        StarletteRoute("/", endpoint=_redirect_to_portal, methods=["GET"]),
+        StarletteRoute("/panel", endpoint=_redirect_to_portal, methods=["GET"]),
+    ]
+    app.router.routes = browser_routes + list(oauth_routes) + list(app.router.routes)
 
     # Extend FastMCP's own lifespan
     _fastmcp_lifespan = app.router.lifespan_context

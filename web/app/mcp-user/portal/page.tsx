@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2 } from 'lucide-react'
 
-const API_BASE = '/panel/mcp-admin'
+import { API_BASE } from '@/lib/config'
 
 type Token = {
   id: string; name: string; last_used_at: string | null
@@ -23,7 +23,7 @@ export default function PortalPage() {
 
   const fetchTokens = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/portal/tokens`)
-    if (res.status === 401) { window.location.href = `${API_BASE}/user-login`; return }
+    if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
     const data = await res.json()
     setTokens(data.tokens ?? [])
     setLoading(false)
@@ -63,7 +63,7 @@ export default function PortalPage() {
 
   async function handleLogout() {
     await fetch(`${API_BASE}/api/auth/user-logout`, { method: 'POST' })
-    window.location.href = `${API_BASE}/user-login`
+    window.location.href = '/panel/mcp-user/login'
   }
 
   const activeTokens = tokens.filter(t => !t.revoked)

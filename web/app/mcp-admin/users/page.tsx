@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Users, Shield, UserCheck, UserX } from 'lucide-react'
 
-const API_BASE = '/panel/mcp-admin'
+import { API_BASE } from '@/lib/config'
 
 type User = {
   id: string; username: string; email: string

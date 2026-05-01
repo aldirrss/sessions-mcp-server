@@ -32,7 +32,7 @@ from .store import (
 _logger = logging.getLogger("lm-mcp-ai.oauth")
 
 BASE = config.MCP_EXTERNAL_URL.rstrip("/")
-WEB_BASE = BASE + "/panel/mcp-admin"
+WEB_BASE = BASE + "/panel"
 
 
 # ---------------------------------------------------------------------------
@@ -275,8 +275,8 @@ async def oauth_authorize_get(request: Request) -> Response:
         client_name=_esc(client_name),
         error_html="",
         cancel_url=_esc(cancel_url),
-        register_url=_esc(WEB_BASE + "/register"),
-        portal_url=_esc(WEB_BASE + "/user-login"),
+        register_url=_esc(WEB_BASE + "/mcp-user/register"),
+        portal_url=_esc(WEB_BASE + "/mcp-user/login"),
     )
     return HTMLResponse(html)
 

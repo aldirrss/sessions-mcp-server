@@ -36,7 +36,7 @@ async function getDashboardData() {
   return { stats: stats[0], topSkills, recentSessions }
 }
 
-const BASE = ''
+
 
 function StatCard({ label, value, icon: Icon, color }: {
   label: string; value: number; icon: React.ElementType; color: string
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
               {topSkills.map((s) => (
                 <Link
                   key={s.slug}
-                  href={`${BASE}/skills/${s.slug}`}
+                  href={`/mcp-admin/skills/${s.slug}`}
                   className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <div>
@@ -104,7 +104,7 @@ export default async function DashboardPage() {
               {recentSessions.map((s) => (
                 <Link
                   key={s.session_id}
-                  href={`${BASE}/sessions/${s.session_id}`}
+                  href={`/mcp-admin/sessions/${s.session_id}`}
                   className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <div className="min-w-0 mr-4">

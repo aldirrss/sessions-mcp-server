@@ -17,13 +17,13 @@ export default function UserLoginPage() {
     const identifier = username || email
     if (!identifier) { setError('Enter your username or email.'); return }
     setLoading(true)
-    const res = await fetch('/panel/mcp-admin/api/auth/user-login', {
+    const res = await fetch('/panel/api/auth/user-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: identifier, password }),
     })
     if (res.ok) {
-      window.location.href = '/panel/mcp-admin/portal'
+      window.location.href = '/panel/mcp-user/portal'
     } else {
       const data = await res.json()
       setError(data.error ?? 'Invalid credentials')
@@ -85,7 +85,7 @@ export default function UserLoginPage() {
 
           <p className="text-center text-xs text-gray-500">
             No account yet?{' '}
-            <Link href="/register" className="text-blue-600 hover:underline">Create one</Link>
+            <Link href="/mcp-user/register" className="text-blue-600 hover:underline">Create one</Link>
           </p>
         </form>
       </div>

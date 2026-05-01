@@ -22,7 +22,7 @@ export default function RegisterPage() {
     if (password !== confirm) { setError('Passwords do not match.'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
     setLoading(true)
-    const res = await fetch('/panel/mcp-admin/api/auth/register', {
+    const res = await fetch('/panel/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, password }),
@@ -104,11 +104,11 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Link href="/user-login"
+              <Link href="/mcp-user/login"
                 className="flex-1 text-center py-2.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
                 Go to Portal
               </Link>
-              <Link href="/login"
+              <Link href="/mcp-admin/login"
                 className="flex-1 text-center py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 Admin Panel
               </Link>
@@ -169,7 +169,7 @@ export default function RegisterPage() {
 
           <p className="text-center text-xs text-gray-500">
             Already have an account?{' '}
-            <Link href="/user-login" className="text-blue-600 hover:underline">Sign in</Link>
+            <Link href="/mcp-user/login" className="text-blue-600 hover:underline">Sign in</Link>
           </p>
         </form>
       </div>

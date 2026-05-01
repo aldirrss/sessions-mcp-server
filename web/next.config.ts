@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  basePath: '/panel/mcp-admin',
+  basePath: '/panel',
   output: 'standalone',
 }
 

@@ -5,22 +5,20 @@ import { usePathname } from 'next/navigation'
 import { LayoutDashboard, MessageSquare, BookOpen, Settings2, Users, LogOut } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
-const API_BASE = '/panel/mcp-admin'
-
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/sessions', label: 'Sessions', icon: MessageSquare },
-  { href: '/skills', label: 'Skills', icon: BookOpen },
-  { href: '/config', label: 'Config', icon: Settings2 },
-  { href: '/users', label: 'Users', icon: Users },
+  { href: '/mcp-admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/mcp-admin/sessions', label: 'Sessions', icon: MessageSquare },
+  { href: '/mcp-admin/skills', label: 'Skills', icon: BookOpen },
+  { href: '/mcp-admin/config', label: 'Config', icon: Settings2 },
+  { href: '/mcp-admin/users', label: 'Users', icon: Users },
 ]
 
 export default function NavSidebar() {
   const pathname = usePathname()
 
   async function handleLogout() {
-    await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' })
-    window.location.href = `${API_BASE}/login`
+    await fetch('/panel/api/auth/logout', { method: 'POST' })
+    window.location.href = '/panel/mcp-admin/login'
   }
 
   return (

@@ -3,40 +3,39 @@ import type { NextRequest } from 'next/server'
 import { getIronSession } from 'iron-session'
 import { sessionOptions, SessionData } from '@/lib/auth'
 
-const ADMIN_PATHS = ['/dashboard', '/sessions', '/skills', '/config', '/users']
-const PORTAL_PATHS = ['/portal']
-const PUBLIC_PATHS = ['/login', '/register', '/user-login']
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // API auth routes — always public
   if (pathname.startsWith('/api/auth/')) return NextResponse.next()
 
-  // Static public pages
-  if (PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
+  // Public pages — no session required
+  if (
+    pathname.startsWith('/mcp-admin/login') ||
+    pathname.startsWith('/mcp-user/login') ||
+    pathname.startsWith('/mcp-user/register')
+  ) {
     return NextResponse.next()
   }
 
   const res = NextResponse.next()
   const session = await getIronSession<SessionData>(request, res, sessionOptions)
 
-  // Portal routes — require user session (userId present)
-  if (PORTAL_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
+  // User portal — require userId
+  if (pathname.startsWith('/mcp-user/')) {
     if (!session.userId) {
       const url = request.nextUrl.clone()
-      url.pathname = '/user-login'
+      url.pathname = '/mcp-user/login'
       return NextResponse.redirect(url)
     }
     return res
   }
 
-  // Admin routes — require isAdmin flag
-  const isAdminPath = pathname === '/' || ADMIN_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
-  if (isAdminPath) {
+  // Admin panel — require isAdmin
+  if (pathname.startsWith('/mcp-admin/')) {
     if (!session.isAdmin) {
       const url = request.nextUrl.clone()
-      url.pathname = '/login'
+      url.pathname = '/mcp-admin/login'
       return NextResponse.redirect(url)
     }
     return res

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Search, Plus, Trash2, Eye } from 'lucide-react'
 
-const API_BASE = '/panel/mcp-admin'
+import { API_BASE } from '@/lib/config'
 
 type Session = {
   session_id: string; title: string; source: string
@@ -156,7 +156,7 @@ export default function SessionsPage() {
                   <td className="px-4 py-3 text-gray-500 text-xs">{new Date(s.updated_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 justify-end">
-                      <Link href={`/sessions/${s.session_id}`} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors">
+                      <Link href={`/mcp-admin/sessions/${s.session_id}`} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors">
                         <Eye className="w-4 h-4" />
                       </Link>
                       <button onClick={() => handleDelete(s.session_id)} className="p-1.5 rounded-md hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors">

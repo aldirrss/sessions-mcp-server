@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Edit2, Check, X, Settings2 } from 'lucide-react'
 
-const API_BASE = '/panel/mcp-admin'
+import { API_BASE } from '@/lib/config'
 
 type ConfigEntry = {
   key: string
