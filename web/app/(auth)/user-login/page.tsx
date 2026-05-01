@@ -6,6 +6,7 @@ import { LogIn } from 'lucide-react'
 
 export default function UserLoginPage() {
   const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -13,11 +14,13 @@ export default function UserLoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    const identifier = username || email
+    if (!identifier) { setError('Enter your username or email.'); return }
     setLoading(true)
     const res = await fetch('/panel/mcp-admin/api/auth/user-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username: identifier, password }),
     })
     if (res.ok) {
       window.location.href = '/panel/mcp-admin/portal'
@@ -45,15 +48,33 @@ export default function UserLoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Username or email</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} required autoFocus
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Username</label>
+            <input type="text" value={username}
+              onChange={e => { setUsername(e.target.value); if (e.target.value) setEmail('') }}
+              autoFocus autoComplete="username"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="username or email" />
+              placeholder="your-username" />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 border-t border-gray-200" />
+            <span className="text-xs text-gray-400">or</span>
+            <div className="flex-1 border-t border-gray-200" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+            <input type="email" value={email}
+              onChange={e => { setEmail(e.target.value); if (e.target.value) setUsername('') }}
+              autoComplete="email"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="you@example.com" />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
+              autoComplete="current-password"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 

@@ -32,6 +32,7 @@ from .store import (
 _logger = logging.getLogger("lm-mcp-ai.oauth")
 
 BASE = config.MCP_EXTERNAL_URL.rstrip("/")
+WEB_BASE = BASE + "/panel/mcp-admin"
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +209,12 @@ _AUTHORIZE_HTML = """<!DOCTYPE html>
     <button class="btn btn-secondary" type="button"
       onclick="window.location='{cancel_url}'">Cancel</button>
   </form>
+  <p style="text-align:center;font-size:12px;color:#94a3b8;margin-top:16px">
+    No account?
+    <a href="{register_url}" style="color:#3b82f6;text-decoration:none">Create one</a>
+    &nbsp;·&nbsp;
+    <a href="{portal_url}" style="color:#3b82f6;text-decoration:none">Sign in to portal</a>
+  </p>
   <script>
     const u = document.getElementById('username');
     const e = document.getElementById('email');
@@ -268,6 +275,8 @@ async def oauth_authorize_get(request: Request) -> Response:
         client_name=_esc(client_name),
         error_html="",
         cancel_url=_esc(cancel_url),
+        register_url=_esc(WEB_BASE + "/register"),
+        portal_url=_esc(WEB_BASE + "/user-login"),
     )
     return HTMLResponse(html)
 
@@ -293,6 +302,8 @@ async def oauth_authorize_post(request: Request) -> Response:
             code_challenge=_esc(code_challenge), state=_esc(state),
             client_name=_esc(client_name), error_html=error_html,
             cancel_url=_esc(cancel_url),
+            register_url=_esc(WEB_BASE + "/register"),
+            portal_url=_esc(WEB_BASE + "/user-login"),
         )
         return HTMLResponse(html, status_code=400)
 
