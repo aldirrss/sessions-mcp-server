@@ -2,83 +2,62 @@
 
 A self-hosted **MCP (Model Context Protocol) server** running in Docker on a VPS.
 Connects **claude.ai Web**, **Claude Code CLI**, and **VSCode** to a shared backend —
-providing Docker stack management, persistent session memory, a skill library, GitHub integration,
-dynamic configuration, and automated data retention — all backed by PostgreSQL.
+providing Docker stack management, persistent session memory, a skill library,
+GitHub integration, dynamic configuration, and automated data retention,
+all backed by PostgreSQL.
 
 ---
 
 ## Table of Contents
 
-1. [Why This Exists](#why-this-exists)
-2. [Architecture](#architecture)
-3. [VPS Requirements](#vps-requirements)
-4. [Installation](#installation)
-5. [Configuration](#configuration)
-6. [Reverse Proxy Setup](#reverse-proxy-setup)
-7. [Connect Clients](#connect-clients)
+1. [Architecture](#architecture)
+2. [Prerequisites](#prerequisites)
+3. [Installation](#installation)
+4. [Environment Variables](#environment-variables)
+5. [Reverse Proxy Setup](#reverse-proxy-setup)
+6. [Connecting Clients](#connecting-clients)
+7. [URL Structure](#url-structure)
 8. [Tools Reference](#tools-reference)
-9. [Web Admin Panel](#web-admin-panel)
-10. [Session Continuity Workflow](#session-continuity-workflow)
-11. [Auto-Vacuum](#auto-vacuum)
-12. [Database Schema](#database-schema)
-13. [Database Monitoring with pgAdmin](#database-monitoring-with-pgadmin)
-14. [Security](#security)
-15. [Troubleshooting](#troubleshooting)
-
----
-
-## Why This Exists
-
-Without a persistent backend, every Claude conversation starts from scratch. Context, decisions,
-and progress are lost between sessions and across clients.
-
-**lm-mcp-ai** solves this by giving Claude a permanent memory store and set of server-side tools:
-
-| Problem | Solution |
-|---------|----------|
-| No memory across sessions | Session store in PostgreSQL — read/write context from any client |
-| No memory across clients | Web, CLI, VSCode all connect to the same server |
-| Can't manage Docker from Claude | 11 Docker tools — list stacks, read logs, restart services, exec commands |
-| Instructions drift between conversations | Skill library + dynamic config table — load knowledge and instructions on demand |
-| Can't see current repo state | GitHub integration — link a session to a repo, fetch live commits and PRs |
-| Database grows unbounded | Auto-vacuum with configurable retention, note pinning, session archiving |
+9. [Web Panel](#web-panel)
+10. [Auto-Vacuum](#auto-vacuum)
+11. [Security](#security)
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Clients                                                                  │
-│  ┌───────────────────┐  ┌──────────────────┐  ┌──────────────────┐       │
-│  │  claude.ai Web    │  │ Claude Code CLI  │  │  VSCode          │       │
-│  │  (?key= param)    │  │ (X-API-Key hdr)  │  │ (X-API-Key hdr)  │       │
-│  └─────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘       │
-│            └───────────────────── HTTPS ───────────────┘                 │
-│                                   ▼                                       │
-│  ┌────────────────────────────────────────────────────────────────────┐   │
-│  │  nginx / Cloudflare  (TLS + Host header rewrite)                   │   │
-│  └─────────────────────────┬──────────────────────────────────────────┘   │
-│                             │  http://127.0.0.1:8765/mcp                  │
-│                             │  http://127.0.0.1:3100  (web admin)         │
-│  ┌──────────────────────────▼──────────────────────────────────────────┐  │
-│  │  lm-mcp-ai  (FastMCP — Streamable HTTP)                             │  │
-│  │  43 tools across 6 categories                                       │  │
-│  └───────────────┬─────────────────────────────────────────────────────┘  │
-│                  │                                                         │
-│    ┌─────────────▼──────────────┐   ┌──────────────────────────────────┐  │
-│    │  Docker Engine (VPS host)  │   │  PostgreSQL 15                   │  │
-│    │  /opt/stacks/              │   │  sessions, notes, skills,        │  │
-│    │    ├── odoo/               │   │  config, skill_versions,         │  │
-│    │    ├── monitoring/         │   │  session_skills                  │  │
-│    │    └── ...                 │   │  port: 127.0.0.1:15432           │  │
-│    └────────────────────────────┘   └──────────────────────────────────┘  │
-│                                                                            │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │  lm-mcp-web  (Next.js 15 — Web Admin Panel)                         │  │
-│  │  https://mcp.yourdomain.com/panel/mcp-admin                         │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  Clients                                                         │
+│  ┌──────────────────┐  ┌─────────────────┐  ┌───────────────┐  │
+│  │  claude.ai Web   │  │ Claude Code CLI │  │  VSCode       │  │
+│  │  (OAuth / PAT)   │  │  (Bearer token) │  │ (Bearer token)│  │
+│  └────────┬─────────┘  └───────┬─────────┘  └───────┬───────┘  │
+│           └────────────── HTTPS ──────────────────── ┘          │
+│                                ▼                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  nginx / Cloudflare  (TLS termination)                  │    │
+│  └───────────────────────┬─────────────────────────────────┘    │
+│          ┌───────────────┴──────────────────────┐               │
+│          ▼  :8765                                ▼  :3100        │
+│  ┌───────────────────────────┐  ┌───────────────────────────┐   │
+│  │  lm-mcp-ai (FastMCP)      │  │  lm-mcp-web (Next.js 15)  │   │
+│  │  /mcp  /oauth/*           │  │  /panel/mcp-admin/*       │   │
+│  │  /.well-known/*           │  │  /panel/mcp-user/*        │   │
+│  └──────────────┬────────────┘  └──────────────┬────────────┘   │
+│                 └──────────────┬───────────────┘                │
+│                                ▼                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  PostgreSQL 15  (127.0.0.1:15432)                       │    │
+│  │  sessions · notes · skills · skill_versions             │    │
+│  │  session_skills · config · users                        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  Docker Engine (VPS host)  /opt/stacks/                 │    │
+│  │    ├── odoo/     ├── monitoring/     └── ...            │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Containers
@@ -86,12 +65,12 @@ and progress are lost between sessions and across clients.
 | Container | Image | Port (loopback) | Purpose |
 |-----------|-------|-----------------|---------|
 | `lm-mcp-postgres` | `postgres:15` | `127.0.0.1:15432` | Database |
-| `lm-mcp-ai` | custom (Python) | `127.0.0.1:8765` | MCP server |
-| `lm-mcp-web` | custom (Next.js) | `127.0.0.1:3100` | Web admin |
+| `lm-mcp-ai` | custom (Python) | `127.0.0.1:8765` | MCP server + OAuth AS |
+| `lm-mcp-web` | custom (Next.js) | `127.0.0.1:3100` | Web panel |
 
 ---
 
-## VPS Requirements
+## Prerequisites
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
@@ -134,36 +113,14 @@ stat -c '%g' /var/run/docker.sock   # e.g. 988
 cp .env.example .env
 ```
 
-Generate secret keys:
+Generate secret values:
 
 ```bash
-python3 -c "import secrets; print(secrets.token_hex(32))"   # MCP_API_KEY
-python3 -c "import secrets; print(secrets.token_hex(24))"   # POSTGRES_PASSWORD
 python3 -c "import secrets; print(secrets.token_hex(32))"   # SESSION_SECRET
+python3 -c "import secrets; print(secrets.token_hex(24))"   # POSTGRES_PASSWORD
 ```
 
-Edit `.env` and fill in at minimum:
-
-```env
-# MCP Server
-MCP_API_KEY=<generated>
-MCP_EXTERNAL_HOST=mcp.yourdomain.com
-COMPOSE_BASE_DIR=/opt           # parent dir of your compose project dirs
-
-# Docker
-DOCKER_GID=988                  # from stat output above
-
-# PostgreSQL
-POSTGRES_PASSWORD=<generated>
-
-# Web Admin
-ADMIN_USER=admin
-ADMIN_PASSWORD=<strong password>
-SESSION_SECRET=<generated>
-
-# GitHub (optional — for private repos + higher API rate limits)
-GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-```
+Edit `.env` with at minimum the required variables (see table below).
 
 ### 5. Build and start
 
@@ -178,67 +135,63 @@ docker compose ps
 
 ---
 
-## Configuration
+## Environment Variables
 
-### MCP Server variables
+### Required
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `MCP_API_KEY` | **Yes** | — | Secret key for client authentication |
-| `MCP_HOST` | No | `0.0.0.0` | Bind address inside the container |
-| `MCP_PORT` | No | `8765` | Port inside the container |
-| `MCP_EXTERNAL_HOST` | No | `mcp.lemacore.com` | Public hostname shown in server metadata |
-| `COMPOSE_BASE_DIR` | No | `/opt/stacks` | Root directory containing compose project subdirs |
-| `LOG_MAX_LINES` | No | `200` | Hard cap on log lines returned per request |
-| `DOCKER_TIMEOUT` | No | `60` | Docker CLI subprocess timeout (seconds) |
-| `DOCKER_GID` | No | `999` | Numeric GID of the docker group on host |
-| `GITHUB_TOKEN` | No | — | GitHub PAT for repo context (read-only scope) |
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string: `postgresql://user:pass@host:5432/db` |
+| `MCP_EXTERNAL_URL` | Public base URL of the server, e.g. `https://mcp.example.com` |
+| `SESSION_SECRET` | Cookie encryption key, minimum 32 characters |
+| `ADMIN_USER` | Admin username for the web panel |
+| `ADMIN_PASSWORD` | Admin password for the web panel |
 
-### PostgreSQL variables
+### Optional
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `POSTGRES_PASSWORD` | **Yes** | — | Database password |
-| `POSTGRES_DB` | No | `mcp_sessions` | Database name |
-| `POSTGRES_USER` | No | `mcp_user` | Database user |
-| `POSTGRES_HOST_PORT` | No | `15432` | Host-side port for SSH tunnel / pgAdmin access |
-| `DATABASE_URL` | No | *(auto-built)* | Full DSN — only set to use an external PostgreSQL |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_API_KEY` | — | Master key fallback for Bearer auth (any user) |
+| `MCP_HOST` | `0.0.0.0` | Bind address inside the container |
+| `MCP_PORT` | `8765` | Port inside the container |
+| `COMPOSE_BASE_DIR` | `/opt/stacks` | Root directory containing Compose project subdirectories |
+| `LOG_MAX_LINES` | `200` | Hard cap on log lines returned per request |
+| `DOCKER_TIMEOUT` | `60` | Docker CLI subprocess timeout in seconds |
+| `GITHUB_TOKEN` | — | Fallback GitHub PAT when a user has no personal token set |
 
-### Web Admin variables
+### PostgreSQL (when running the bundled container)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ADMIN_USER` | **Yes** | — | Admin username for web panel login |
-| `ADMIN_PASSWORD` | **Yes** | — | Admin password for web panel login |
-| `SESSION_SECRET` | **Yes** | — | Encryption key for iron-session cookies (min 32 chars) |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTGRES_PASSWORD` | — | Database password |
+| `POSTGRES_DB` | `mcp_sessions` | Database name |
+| `POSTGRES_USER` | `mcp_user` | Database user |
+| `POSTGRES_HOST_PORT` | `15432` | Host-side port for SSH tunnel or pgAdmin |
 
 ---
 
 ## Reverse Proxy Setup
 
-The MCP server (`/mcp`) and web admin (`/panel/mcp-admin`) must be accessible over HTTPS.
-nginx must rewrite the `Host` header to `localhost` — required by FastMCP's transport security.
-
-### nginx config
+All traffic must reach the server over HTTPS. nginx must rewrite the `Host` header to `localhost` for the `/mcp` location — required by FastMCP's transport security.
 
 ```nginx
 server {
-    listen 443 ssl;                         # or listen 80; for Cloudflare proxy
-    server_name mcp.yourdomain.com;
+    listen 443 ssl;
+    server_name mcp.example.com;
 
-    # MCP server (claude.ai / CLI / VSCode)
-    location /mcp {
+    # MCP server — OAuth AS + MCP endpoint
+    location ~ ^/(mcp|oauth|\.well-known) {
         proxy_pass         http://127.0.0.1:8765;
         proxy_http_version 1.1;
-        proxy_set_header   Host "localhost";    # REQUIRED
+        proxy_set_header   Host "localhost";   # REQUIRED
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   Upgrade $http_upgrade;
         proxy_set_header   Connection "upgrade";
         proxy_read_timeout 300s;
     }
 
-    # Web admin panel (Next.js)
-    location /panel/mcp-admin {
+    # Web panel (Next.js)
+    location /panel {
         proxy_pass         http://127.0.0.1:3100;
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
@@ -247,31 +200,38 @@ server {
 }
 ```
 
-> For Cloudflare DNS Proxy (HTTP + orange cloud), use `listen 80;` and omit SSL directives.
+> For Cloudflare DNS Proxy, use `listen 80;` and omit SSL directives.
 > For Cloudflare Tunnel, add `httpHostHeader: "localhost"` to the `/mcp` ingress rule.
 
 ---
 
-## Connect Clients
+## Connecting Clients
 
-### claude.ai Web
+### OAuth auto-discovery (claude.ai / VSCode)
+
+The server exposes `/.well-known/oauth-authorization-server` and supports PKCE S256.
+Clients that support OAuth 2.0 auto-discovery will find the authorization endpoint automatically when pointed at `https://mcp.example.com/mcp`.
+
+OAuth login page: `https://mcp.example.com/oauth/authorize`
+
+### Bearer token (PAT)
+
+Users create personal access tokens in the user portal (`/panel/mcp-user/portal`).
+Tokens are stored as SHA-256 hashes and sent as `Authorization: Bearer <token>`.
+
+### claude.ai Web (manual key)
 
 1. Go to **Settings → Connectors → Add custom connector**
-2. Fill in:
+2. Set the URL to: `https://mcp.example.com/mcp?key=YOUR_TOKEN`
 
-   | Field | Value |
-   |-------|-------|
-   | Name | `MCP Lema` |
-   | Remote MCP server URL | `https://mcp.yourdomain.com/mcp?key=YOUR_MCP_API_KEY` |
-
-> The `?key=` parameter is required — claude.ai web has no header field.
+> The `?key=` parameter is accepted as a Bearer token equivalent.
 
 ### Claude Code CLI
 
 ```bash
 claude mcp add --transport http --scope user mcp-lema \
-  https://mcp.yourdomain.com/mcp \
-  --header "X-API-Key: YOUR_MCP_API_KEY"
+  https://mcp.example.com/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
 ```
 
 ### VSCode
@@ -283,8 +243,8 @@ Create `.vscode/mcp.json` in your project:
   "servers": {
     "mcp-lema": {
       "type": "http",
-      "url": "https://mcp.yourdomain.com/mcp",
-      "headers": { "X-API-Key": "YOUR_MCP_API_KEY" }
+      "url": "https://mcp.example.com/mcp",
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
     }
   }
 }
@@ -293,7 +253,8 @@ Create `.vscode/mcp.json` in your project:
 ### Verify connection
 
 ```bash
-curl -s -X POST "https://mcp.yourdomain.com/mcp?key=YOUR_MCP_API_KEY" \
+curl -s -X POST "https://mcp.example.com/mcp" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
   | jq '[.result.tools[].name]'
@@ -301,10 +262,26 @@ curl -s -X POST "https://mcp.yourdomain.com/mcp?key=YOUR_MCP_API_KEY" \
 
 ---
 
+## URL Structure
+
+| URL | Description |
+|-----|-------------|
+| `https://mcp.example.com/` | Redirect to user login |
+| `https://mcp.example.com/mcp` | MCP endpoint (Bearer auth) |
+| `https://mcp.example.com/oauth/authorize` | OAuth login page |
+| `https://mcp.example.com/.well-known/oauth-authorization-server` | OAuth AS metadata |
+| `https://mcp.example.com/panel/mcp-user/login` | User login |
+| `https://mcp.example.com/panel/mcp-user/register` | User registration |
+| `https://mcp.example.com/panel/mcp-user/portal` | Token management (user) |
+| `https://mcp.example.com/panel/mcp-user/skills` | Global skills browser (user) |
+| `https://mcp.example.com/panel/mcp-admin/login` | Admin login |
+| `https://mcp.example.com/panel/mcp-admin` | Admin dashboard |
+
+---
+
 ## Tools Reference
 
-43 tools across 6 categories. See each category's `README.md` in [`tools/`](tools/) for full
-parameter documentation and examples.
+Tools are grouped into 7 categories. See each category's `README.md` under `tools/` for full parameter documentation.
 
 ### Docker (11 tools)
 
@@ -312,17 +289,17 @@ parameter documentation and examples.
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `docker_list_stacks` | read | List all compose stacks under `COMPOSE_BASE_DIR` |
+| `docker_list_stacks` | read | List all Compose stacks under `COMPOSE_BASE_DIR` |
 | `docker_stack_ps` | read | Container state within a stack |
 | `docker_stack_logs` | read | Recent log output from a stack or service |
 | `docker_list_containers` | read | All containers on the host |
 | `docker_inspect_container` | read | Full `docker inspect` JSON |
 | `docker_stats` | read | CPU/memory/network snapshot |
-| `docker_stack_up` | **write** | Start a stack or service |
-| `docker_stack_down` | **write** | Stop and remove containers |
-| `docker_stack_restart` | **write** | Restart a stack or service |
-| `docker_stack_pull` | **write** | Pull latest images |
-| `docker_exec` | **write** | Execute a command in a container |
+| `docker_stack_up` | write | Start a stack or service |
+| `docker_stack_down` | write | Stop and remove containers |
+| `docker_stack_restart` | write | Restart a stack or service |
+| `docker_stack_pull` | write | Pull latest images |
+| `docker_exec` | write | Execute a command inside a container |
 
 ### Sessions (13 tools)
 
@@ -331,18 +308,18 @@ parameter documentation and examples.
 | Tool | Type | Description |
 |------|------|-------------|
 | `session_write` | write | Create or overwrite a session context |
-| `session_read` | read | Full context + pinned notes + notes |
+| `session_read` | read | Full context + pinned notes + all notes |
 | `session_list` | read | List sessions (pinned first, archived hidden by default) |
-| `session_append` | write | Append a timestamped note |
-| `session_delete` | write | Permanently delete a session |
+| `session_append` | write | Append a timestamped note to a session |
+| `session_delete` | write | Permanently delete a session and its notes |
 | `session_search` | read | Full-text search across sessions and notes |
-| `note_pin` | write | Pin a note (always at top, never vacuumed) |
-| `note_unpin` | write | Remove pin from a note |
-| `session_compact` | write | Merge old notes into context field, delete them |
+| `session_compact` | write | Merge old notes into context field and delete them |
 | `session_pin` | write | Protect a session from auto-vacuum |
-| `session_unpin` | write | Remove protection |
+| `session_unpin` | write | Remove protection from a session |
 | `session_archive` | write | Soft-delete a session |
 | `session_restore` | write | Restore an archived session |
+| `note_pin` | write | Pin a note (always at top, never vacuumed) |
+| `note_unpin` | write | Remove pin from a note |
 
 ### Skills (11 tools)
 
@@ -369,8 +346,8 @@ parameter documentation and examples.
 | Tool | Type | Description |
 |------|------|-------------|
 | `session_link_repo` | write | Link a GitHub repo URL to a session |
-| `session_unlink_repo` | write | Remove the repo link |
-| `repo_get_context` | read | Fetch branch, recent commits, and open PRs |
+| `session_unlink_repo` | write | Remove the repo link from a session |
+| `repo_get_context` | read | Fetch default branch, recent commits, and open PRs |
 
 ### Config (4 tools)
 
@@ -391,99 +368,66 @@ parameter documentation and examples.
 |------|------|-------------|
 | `vacuum_run` | write | Clean up old notes and archive/delete inactive sessions |
 
----
+### Auth (7 tools)
 
-## Web Admin Panel
-
-A Next.js 15 web interface for managing sessions, skills, and config without using Claude.
-
-**URL:** `https://mcp.yourdomain.com/panel/mcp-admin`
-
-> See [`web/README.md`](web/README.md) for full documentation.
-
-| Page | URL | Description |
-|------|-----|-------------|
-| Dashboard | `/` | Stats: sessions, notes, skills, skill usage (7d) |
-| Sessions | `/sessions` | List, search, filter (including archived) |
-| Session Detail | `/sessions/:id` | Edit, pin, archive, link GitHub repo, manage notes |
-| Skills | `/skills` | List, search, create skill |
-| Skill Detail | `/skills/:slug` | Edit content, view version history and sessions |
-| Config | `/config` | CRUD for config key-value store |
+| Tool | Type | Description |
+|------|------|-------------|
+| `user_me` | read | Return the currently authenticated user |
+| `token_create` | write | Create a new personal access token for the current user |
+| `token_list` | read | List all active tokens for the current user |
+| `token_revoke` | write | Revoke a token by ID |
+| `user_list` | read | List all users (admin only) |
+| `user_set_role` | write | Change a user's role: `user` or `admin` (admin only) |
+| `user_set_active` | write | Enable or disable a user account (admin only) |
 
 ---
 
-## Session Continuity Workflow
+## Web Panel
 
-```
-Morning — claude.ai Web
-  → session_list()                         # see active sessions
-  → session_read("feat-auth-dev")          # restore context
-  → config_list()                          # load any dynamic instructions
-  → repo_get_context("feat-auth-dev")      # get current branch + open PRs
-  → ... work ...
-  → session_append("feat-auth-dev", "Completed token refresh. PR #12 created.")
+The web panel has two sections served under `/panel`:
 
-Afternoon — Claude Code CLI (different machine)
-  → session_read("feat-auth-dev")          # same context + note from Web session
-  → note_pin(note_id, "feat-auth-dev")     # mark important decision as pinned
-  → ... work ...
-  → session_write("feat-auth-dev", ...)    # update context with new progress
+### Admin (`/panel/mcp-admin/*`)
 
-Next day — VSCode
-  → session_read("feat-auth-dev")          # pinned note always visible at top
-  → session_compact("feat-auth-dev", before_days=7)  # merge week-old notes into context
-```
+Full management interface — sessions, skills, config, notes, and import.
+Requires admin credentials set via `ADMIN_USER` / `ADMIN_PASSWORD`.
 
-### Recommended CLAUDE.md / system prompt
+| Page | Path | Description |
+|------|------|-------------|
+| Dashboard | `/panel/mcp-admin` | Stats: sessions, notes, skills, recent activity |
+| Sessions | `/panel/mcp-admin/sessions` | List, search, filter (including archived) |
+| Session Detail | `/panel/mcp-admin/sessions/:id` | Edit, pin, archive, link GitHub repo, manage notes |
+| Skills | `/panel/mcp-admin/skills` | List, search, create skills |
+| Skill Import | `/panel/mcp-admin/skills/import` | Drag & drop .md files, preview before confirm |
+| Config | `/panel/mcp-admin/config` | CRUD for config key-value store |
 
-```
-At the start of every conversation:
-1. Call session_list to see active sessions.
-2. Call session_read if a relevant session exists.
-3. Call config_list to load dynamic instructions.
-4. Call repo_get_context if the session has a linked GitHub repo.
+### User Portal (`/panel/mcp-user/*`)
 
-During the conversation:
-- Call session_append to log important decisions or blockers.
-- Call note_pin to mark notes that must stay visible long-term.
+Self-service interface for registered users — token management and global skills.
 
-Before ending a conversation with unfinished work:
-- Call session_write to save current state.
-```
+| Page | Path | Description |
+|------|------|-------------|
+| Login | `/panel/mcp-user/login` | User login |
+| Register | `/panel/mcp-user/register` | User registration |
+| Portal | `/panel/mcp-user/portal` | Create, list, and revoke personal access tokens; set GitHub PAT |
+| Skills | `/panel/mcp-user/skills` | Browse global skills |
+
+> See [`web/README.md`](web/README.md) for full web panel documentation.
 
 ---
 
 ## Auto-Vacuum
 
-Automated retention to keep the database lean. Disabled by default — enable via the Config page
-or with `config_write`.
+Automated retention to keep the database lean. Controlled by config keys in the `config` table.
 
-### How it works
-
-Runs once per day (asyncio task in the MCP server). Two-phase for sessions:
-
-```
-Phase 1 — inactive sessions → archived=true (hidden from session_list)
-Phase 2 — sessions that have been archived for another vacuum_sessions_days → hard deleted
-```
-
-### Vacuum criteria (ALL must be true to archive a session)
-
-- `pinned = false` — pinned sessions are never touched
-- No tag `keep` or `archive` in the session's tags
-- `updated_at < NOW() - vacuum_sessions_days days`
-
-### Config keys
-
-Set these via `config_write` or the Config page in the web admin:
+### Config Keys
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `vacuum_enabled` | `false` | Enable the daily vacuum task |
 | `vacuum_notes_days` | `90` | Delete unpinned notes older than N days |
-| `vacuum_sessions_days` | `180` | Archive/delete inactive sessions after N days |
+| `vacuum_sessions_days` | `180` | Archive inactive sessions after N days; hard-delete archived sessions after another N days |
 
-### Enable vacuum
+### Enable
 
 ```
 config_write(key="vacuum_enabled", value="true")
@@ -492,66 +436,17 @@ config_write(key="vacuum_enabled", value="true")
 ### Manual run
 
 ```
-vacuum_run(dry_run=true)    # preview — no changes
+vacuum_run(dry_run=true)    # preview — no changes made
 vacuum_run(dry_run=false)   # execute
 ```
 
----
+### Opt-out
 
-## Database Schema
-
-| Table | Key Columns | Description |
-|-------|-------------|-------------|
-| `sessions` | `session_id PK`, `title`, `context`, `tags[]`, `pinned`, `archived`, `repo_url`, `search_vec` | Main session records |
-| `notes` | `id PK`, `session_id FK`, `content`, `source`, `pinned` | Timestamped notes appended to sessions |
-| `skills` | `slug PK`, `name`, `content`, `summary`, `category`, `tags[]`, `source`, `search_vec` | Skill library |
-| `skill_versions` | `id PK`, `slug`, `content`, `changed_at` | Content snapshots before each skill update |
-| `session_skills` | `(session_id, skill_slug) PK`, `used_at` | Many-to-many: which skills were used in which sessions |
-| `config` | `key PK`, `value`, `description` | Global key-value configuration store |
-
-All tables use `TIMESTAMPTZ` for timestamps. Full-text search uses `TSVECTOR` columns populated
-by `BEFORE INSERT OR UPDATE` triggers. Trigram indexes (`gin_trgm_ops`) enable fast `ILIKE` title search.
-
----
-
-## Database Monitoring with pgAdmin
-
-```bash
-# Open SSH tunnel on your local machine
-ssh -L 15432:127.0.0.1:15432 your-user@your-vps-ip -N
-```
-
-Connect pgAdmin Desktop to `localhost:15432`, database `mcp_sessions`, user `mcp_user`.
-
-Useful queries:
-
-```sql
--- All sessions ordered by last update
-SELECT session_id, title, pinned, archived, tags, updated_at
-FROM sessions ORDER BY pinned DESC, updated_at DESC;
-
--- Sessions approaching vacuum threshold (90 days inactive)
-SELECT session_id, title, updated_at,
-       NOW() - updated_at AS inactive_for
-FROM sessions
-WHERE pinned = false AND archived = false
-  AND NOT (tags && ARRAY['keep','archive'])
-ORDER BY updated_at ASC;
-
--- Skill usage leaderboard
-SELECT sk.slug, sk.name, COUNT(ss.session_id) AS uses
-FROM skills sk
-LEFT JOIN session_skills ss ON ss.skill_slug = sk.slug
-GROUP BY sk.slug, sk.name
-ORDER BY uses DESC;
-
--- Full-text search across sessions and notes
-SELECT DISTINCT s.session_id, s.title
-FROM sessions s
-LEFT JOIN notes n ON n.session_id = s.session_id
-WHERE s.search_vec @@ plainto_tsquery('english', 'docker deployment')
-   OR n.content ILIKE '%docker deployment%';
-```
+| Method | Effect |
+|--------|--------|
+| `session_pin(session_id)` | Session excluded from all vacuum phases |
+| Add tag `keep` to a session | Session excluded from archive phase |
+| `note_pin(note_id, session_id)` | Note excluded from deletion |
 
 ---
 
@@ -559,74 +454,13 @@ WHERE s.search_vec @@ plainto_tsquery('english', 'docker deployment')
 
 | Measure | Detail |
 |---------|--------|
-| API key auth | Every `/mcp` request requires `X-API-Key` header or `?key=` param |
+| OAuth 2.0 AS (PKCE S256) | Standard authorization code flow for VSCode, CLI, and claude.ai |
+| Per-user Bearer tokens (PAT) | Stored as SHA-256 hash; never logged or returned after creation |
+| Roles | `user` (portal access) and `admin` (full panel); enforced on all routes |
+| Master key fallback | `MCP_API_KEY` env var accepted as a valid Bearer token for any user |
 | No shell injection | All subprocess calls use `asyncio.create_subprocess_exec` — no `shell=True` |
-| Docker socket read-only | Mounted as `:ro`; container cannot modify the socket |
-| Path traversal prevention | All compose paths are validated to stay within `COMPOSE_BASE_DIR` |
+| Path traversal prevention | All Compose paths validated to stay within `COMPOSE_BASE_DIR` |
 | Pydantic validation | All tool inputs validated with regex, length limits, and type checks |
 | Non-root container | MCP process runs as `mcpuser` (UID 1000) |
-| Loopback binding | Ports 8765, 3100, and 15432 are bound to `127.0.0.1` — not internet-exposed |
-| Read-only container filesystem | `read_only: true` in compose; only `/tmp` writable via tmpfs |
-| Web admin auth | iron-session encrypted cookie; credentials via `ADMIN_USER`/`ADMIN_PASSWORD` env vars |
-
----
-
-## Troubleshooting
-
-### Server does not start
-
-```bash
-docker compose logs mcp
-# Look for: missing MCP_API_KEY, database connection errors, port conflicts
-```
-
-### PostgreSQL not healthy
-
-```bash
-docker compose logs postgres
-docker compose restart postgres
-```
-
-### Web admin not reachable
-
-```bash
-docker compose logs web
-# Check: ADMIN_USER, ADMIN_PASSWORD, SESSION_SECRET are set in .env
-# Check nginx: location /panel/mcp-admin proxies to 127.0.0.1:3100
-```
-
-### 421 Misdirected Request
-
-nginx must rewrite the Host header:
-```nginx
-proxy_set_header Host "localhost";
-```
-
-### 401 Unauthorized from claude.ai
-
-- URL must include `/mcp` path: `https://mcp.yourdomain.com/mcp?key=...`
-- Key must exactly match `MCP_API_KEY` in `.env`
-
-### `Unable to find group docker`
-
-`group_add` requires a numeric GID:
-```bash
-stat -c '%g' /var/run/docker.sock   # e.g. 988
-# Set DOCKER_GID=988 in .env, then: docker compose up -d --build
-```
-
-### `repo_get_context` returns rate limit error
-
-Set `GITHUB_TOKEN` in `.env` — unauthenticated requests are limited to 60/hour.
-With a token: 5000/hour. Token requires `repo` read scope for private repos,
-or no scope for public repos.
-
-### Test MCP connection
-
-```bash
-curl -s -X POST "https://mcp.yourdomain.com/mcp?key=YOUR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | jq '[.result.tools[].name] | length'
-# Expected: 43
-```
+| Loopback binding | Ports 8765, 3100, and 15432 bound to `127.0.0.1` — not internet-exposed |
+| Web session cookie | `lm_oauth_session` encrypted via `iron-session`; 7-day expiry |

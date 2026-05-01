@@ -256,6 +256,9 @@ _DDL_STEPS = [
     # Per-user GitHub Personal Access Token (nullable, stored in plaintext)
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS github_token TEXT",
 
+    # Global skills — visible in user portal and auto-available in MCP
+    "ALTER TABLE skills ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT false",
+
     # Indexes
     "CREATE INDEX IF NOT EXISTS idx_oauth_sessions_user ON oauth_sessions (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_users_email       ON users (email)",

@@ -64,6 +64,11 @@ class SkillWriteInput(BaseModel):
 class SkillReadInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
     slug: str = Field(..., description="Skill slug to read.", min_length=1, max_length=100)
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Active session ID. When provided, auto-records skill use in session_skills.",
+        max_length=100,
+    )
 
     @field_validator("slug")
     @classmethod

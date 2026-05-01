@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2, Github } from 'lucide-react'
+import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2, Github, BookOpen } from 'lucide-react'
+import Link from 'next/link'
 
 import { API_BASE } from '@/lib/config'
 
@@ -103,14 +104,26 @@ export default function PortalPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-            <Key className="w-4 h-4 text-white" />
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+              <Key className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold text-gray-900">MCP Portal</h1>
+              <p className="text-xs text-gray-500">Manage your access tokens</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-sm font-semibold text-gray-900">MCP Portal</h1>
-            <p className="text-xs text-gray-500">Manage your access tokens</p>
-          </div>
+          <nav className="flex items-center gap-1">
+            <Link href="/mcp-user/portal"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-100 text-gray-900 rounded-lg font-medium">
+              <Key className="w-3.5 h-3.5" /> Tokens
+            </Link>
+            <Link href="/mcp-user/skills"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+              <BookOpen className="w-3.5 h-3.5" /> Skills
+            </Link>
+          </nav>
         </div>
         <button onClick={handleLogout}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">

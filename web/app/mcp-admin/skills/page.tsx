@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Search, Plus, Trash2, Eye } from 'lucide-react'
+import { Search, Plus, Trash2, Eye, Upload, Globe } from 'lucide-react'
 
 import { API_BASE } from '@/lib/config'
 
 type Skill = {
   slug: string; name: string; summary: string; category: string | null
+  is_global: boolean;
   tags: string[]; source: string; updated_at: string; session_count: number
 }
 
@@ -81,12 +82,18 @@ export default function SkillsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Skills</h1>
           <p className="text-sm text-gray-500 mt-0.5">{total} skills in library</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" /> New Skill
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href="/mcp-admin/skills/import"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">
+            <Upload className="w-4 h-4" /> Import .md
+          </Link>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New Skill
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-3">
@@ -127,6 +134,7 @@ export default function SkillsPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tags</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Source</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Visibility</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sessions</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Updated</th>
                 <th className="px-4 py-3"></th>
@@ -144,7 +152,12 @@ export default function SkillsPage() {
                       {s.tags.length > 3 && <span className="text-xs text-gray-400">+{s.tags.length - 3}</span>}
                     </div>
                   </td>
-                  <td className="px-4 py-3"><Badge label={s.source} color={s.source === 'file' ? 'blue' : 'gray'} /></td>
+                  <td className="px-4 py-3"><Badge label={s.source === 'import' ? 'import' : s.source} color={s.source === 'import' ? 'blue' : 'gray'} /></td>
+                  <td className="px-4 py-3">
+                    {s.is_global
+                      ? <span className="flex items-center gap-1 text-xs text-green-700"><Globe className="w-3.5 h-3.5" /> Global</span>
+                      : <span className="text-xs text-gray-400">Internal</span>}
+                  </td>
                   <td className="px-4 py-3 text-gray-500">{s.session_count}</td>
                   <td className="px-4 py-3 text-xs text-gray-400">{new Date(s.updated_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3">

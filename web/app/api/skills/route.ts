@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const rows = await sql`
     SELECT
-      sk.slug, sk.name, sk.summary, sk.category, sk.tags, sk.source, sk.updated_at,
+      sk.slug, sk.name, sk.summary, sk.category, sk.tags, sk.source, sk.is_global, sk.updated_at,
       COUNT(ss.session_id)::int AS session_count
     FROM skills sk
     LEFT JOIN session_skills ss ON ss.skill_slug = sk.slug

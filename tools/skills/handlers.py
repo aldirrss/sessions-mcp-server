@@ -107,13 +107,23 @@ def register(mcp: FastMCP) -> None:
         Returns the complete Markdown content. Use this to load a skill's
         instructions into context before applying it.
 
+        When session_id is provided, automatically records skill usage in
+        session_skills (idempotent — safe to call multiple times).
+
         Args:
             params.slug: Skill slug to read.
+            params.session_id: Active session ID for auto-tracking (optional).
         """
         try:
             skill = await read_skill(params.slug)
             if skill is None:
                 return f"Skill `{params.slug}` not found."
+
+            if params.session_id:
+                try:
+                    await track_skill(params.session_id, params.slug)
+                except Exception:
+                    pass
 
             tags_note = f"**Tags:** {', '.join(skill['tags'])}\n" if skill.get("tags") else ""
             cat_note = f"**Category:** {skill['category']}\n" if skill.get("category") else ""

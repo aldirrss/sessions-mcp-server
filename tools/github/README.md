@@ -1,22 +1,39 @@
 # tools/github
 
-GitHub integration — link sessions to repositories and fetch live repo context (branch, commits, open PRs) via the GitHub REST API.
+GitHub integration — link sessions to repositories and fetch live repo context
+(default branch, recent commits, open PRs) via the GitHub REST API.
 
-Requires a `GITHUB_TOKEN` environment variable with at least `repo` read scope.
+---
+
+## Authentication
+
+GitHub API calls use a **per-user Personal Access Token (PAT)**. Each user sets their
+own token in the user portal at `/panel/mcp-user/portal`. One token per user is stored
+in `users.github_token`.
+
+When a user has no personal token set, the server falls back to the `GITHUB_TOKEN`
+environment variable.
+
+| Source | Priority | Scope needed |
+|--------|----------|--------------|
+| User's PAT (set in portal) | First | `repo` read for private repos; no scope for public |
+| `GITHUB_TOKEN` env var | Fallback | Same as above |
+
+Without any token, requests hit the unauthenticated rate limit (60 requests/hour per IP).
+With a token, the limit is 5,000 requests/hour.
 
 ---
 
 ## Tools
 
 #### `session_link_repo`
-Link a GitHub repository to a session.
+Link a GitHub repository to a session. Stores the repo URL in the session record so
+`repo_get_context` can query the correct repository without repeating the URL each time.
 
-Stores the repo URL in the session record so `repo_get_context` can query the correct repository without repeating the URL each time.
-
-| Parameter    | Type   | Required | Description                                         |
-|--------------|--------|----------|-----------------------------------------------------|
-| `session_id` | string | yes      | Session ID to link                                  |
-| `repo_url`   | string | yes      | Full GitHub URL: `https://github.com/owner/repo`   |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | yes | Session ID to link |
+| `repo_url` | string | yes | Full GitHub URL: `https://github.com/owner/repo` |
 
 The URL is validated on input — malformed URLs are rejected before saving.
 
@@ -31,13 +48,11 @@ session_link_repo(
 ---
 
 #### `session_unlink_repo`
-Remove the GitHub repository link from a session.
+Remove the GitHub repository link from a session. Sets `repo_url = NULL` on the session record.
 
-Sets `repo_url = NULL` on the session record.
-
-| Parameter    | Type   | Required | Description         |
-|--------------|--------|----------|---------------------|
-| `session_id` | string | yes      | Session ID to unlink |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | yes | Session ID to unlink |
 
 ---
 
@@ -49,15 +64,16 @@ Returns:
 - Recent commits (SHA, author, message, date)
 - Open pull requests (number, title, author, head branch, draft status)
 
-Call this at the start of any coding session to get current repository state without leaving the conversation.
+Call this at the start of any coding session to get current repository state without
+leaving the conversation.
 
-| Parameter       | Type    | Required | Default | Description                              |
-|-----------------|---------|----------|---------|------------------------------------------|
-| `session_id`    | string  | yes      |         | Session whose linked repo will be queried|
-| `include_prs`   | boolean | no       | true    | Include open pull requests               |
-| `commit_limit`  | integer | no       | 10      | Number of recent commits to return (1–30)|
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `session_id` | string | yes | — | Session whose linked repo will be queried |
+| `include_prs` | boolean | no | `true` | Include open pull requests |
+| `commit_limit` | integer | no | `10` | Number of recent commits to return (1–30) |
 
-The session must have a linked repo (`session_link_repo`) before this tool can be called.
+The session must have a linked repo (`session_link_repo`) before calling this tool.
 
 **Example:**
 ```
@@ -66,15 +82,19 @@ repo_get_context(session_id="feat-auth-dev", commit_limit=5)
 
 ---
 
-## Configuration
+## Setting a GitHub PAT
 
-| Env Variable   | Description                              | Required |
-|----------------|------------------------------------------|----------|
-| `GITHUB_TOKEN` | Personal access token or GitHub App token | Yes (for private repos / higher rate limits) |
+Users set their own PAT in the user portal:
 
-Without `GITHUB_TOKEN`, requests hit the unauthenticated GitHub API rate limit (60 req/hour per IP). With a token, the limit is 5,000 req/hour.
+1. Log in at `https://mcp.example.com/panel/mcp-user/login`
+2. Go to **Portal**
+3. Enter your GitHub PAT in the GitHub Token section and save
 
-Set it in `.env`:
+The token is stored per-user in `users.github_token`. Only one token per user.
+To use a different token, enter the new value — it replaces the existing one.
+
+To set the fallback server-level token, add it to the server's `.env`:
+
 ```
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 ```
@@ -84,7 +104,7 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 ## Typical Workflow
 
 ```
-# 1. Link repo once per session
+# 1. Link a repo once per session
 session_link_repo(session_id="my-feature", repo_url="https://github.com/owner/repo")
 
 # 2. Fetch context at the start of each conversation

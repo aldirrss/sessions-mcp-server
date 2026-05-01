@@ -26,6 +26,7 @@ def _skill_row(row: asyncpg.Record, full_content: bool = True) -> dict:
         "source":     row["source"],
         "category":   row["category"],
         "tags":       list(row["tags"]),
+        "is_global":  row["is_global"],
         "created_at": row["created_at"].isoformat(),
         "updated_at": row["updated_at"].isoformat(),
     }
@@ -54,6 +55,7 @@ async def write_skill(
     source: str = "manual",
     category: Optional[str] = None,
     tags: Optional[list[str]] = None,
+    is_global: bool = False,
 ) -> dict:
     """
     Create or update a skill.
@@ -77,18 +79,19 @@ async def write_skill(
 
             row = await conn.fetchrow(
                 """
-                INSERT INTO skills (slug, name, summary, content, source, category, tags)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO skills (slug, name, summary, content, source, category, tags, is_global)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (slug) DO UPDATE
-                    SET name     = EXCLUDED.name,
-                        summary  = EXCLUDED.summary,
-                        content  = EXCLUDED.content,
-                        source   = EXCLUDED.source,
-                        category = EXCLUDED.category,
-                        tags     = EXCLUDED.tags
+                    SET name      = EXCLUDED.name,
+                        summary   = EXCLUDED.summary,
+                        content   = EXCLUDED.content,
+                        source    = EXCLUDED.source,
+                        category  = EXCLUDED.category,
+                        tags      = EXCLUDED.tags,
+                        is_global = EXCLUDED.is_global
                 RETURNING *
                 """,
-                slug, name, summary, content, source, category, tags_val,
+                slug, name, summary, content, source, category, tags_val, is_global,
             )
     return _skill_row(row)
 
@@ -105,11 +108,12 @@ async def list_skills(
     category: Optional[str] = None,
     tag: Optional[str] = None,
     source: Optional[str] = None,
+    is_global: Optional[bool] = None,
 ) -> list[dict]:
     """
     List all skills ordered by name.
     Returns summary only (no content) to keep response size small.
-    Supports filtering by category, tag, or source.
+    Supports filtering by category, tag, source, or is_global.
     """
     pool = await db.get_pool()
 
@@ -125,13 +129,16 @@ async def list_skills(
     if source:
         args.append(source)
         conditions.append(f"source = ${len(args)}")
+    if is_global is not None:
+        args.append(is_global)
+        conditions.append(f"is_global = ${len(args)}")
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             f"""
-            SELECT slug, name, summary, source, category, tags, created_at, updated_at
+            SELECT slug, name, summary, source, category, tags, is_global, created_at, updated_at
             FROM skills
             {where}
             ORDER BY name ASC
