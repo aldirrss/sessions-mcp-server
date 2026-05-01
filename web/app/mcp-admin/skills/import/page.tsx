@@ -2,14 +2,9 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Upload, FileText, Check, X, Globe, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Upload, FileText, Check, Globe, AlertTriangle } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
-
-type ParsedSkill = {
-  slug: string; name: string; summary: string; content: string
-  category: string | null; tags: string[]; format: 'claude' | 'copilot' | 'plain'
-  conflict: boolean
-}
+import type { ParsedSkill } from '@/app/api/skills/import/route'
 
 const FORMAT_LABELS: Record<string, string> = {
   claude: 'Claude',
@@ -81,7 +76,7 @@ export default function SkillImportPage() {
     const res = await fetch(`${API_BASE}/api/skills/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'confirm', files: [], selected: Array.from(selected) }),
+      body: JSON.stringify({ action: 'confirm', skills, selected: Array.from(selected) }),
     })
     const data = await res.json()
     setImporting(false)
