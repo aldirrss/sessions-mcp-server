@@ -50,7 +50,7 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
 
         # Master key — backward compat / emergency access
         if config.MCP_API_KEY and token == config.MCP_API_KEY:
-            set_current_user({"id": None, "username": "admin", "role": "admin", "email": ""})
+            set_current_user({"id": None, "username": "admin", "role": "admin", "email": "", "github_token": None})
             return await call_next(request)
 
         # Per-user token from DB

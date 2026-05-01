@@ -29,10 +29,11 @@ def _parse_repo(repo_url: str) -> tuple[str, str]:
     return m.group(1), m.group(2)
 
 
-def _headers() -> dict[str, str]:
+def _headers(token: Optional[str] = None) -> dict[str, str]:
     h = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-    if config.GITHUB_TOKEN:
-        h["Authorization"] = f"Bearer {config.GITHUB_TOKEN}"
+    effective_token = token or config.GITHUB_TOKEN
+    if effective_token:
+        h["Authorization"] = f"Bearer {effective_token}"
     return h
 
 
@@ -40,6 +41,7 @@ async def get_repo_context(
     repo_url: str,
     commit_limit: int = 10,
     include_prs: bool = True,
+    token: Optional[str] = None,
 ) -> dict:
     """
     Fetch repo info, recent commits, and optionally open PRs.
@@ -47,7 +49,7 @@ async def get_repo_context(
     """
     owner, repo = _parse_repo(repo_url)
 
-    async with httpx.AsyncClient(headers=_headers(), timeout=15) as client:
+    async with httpx.AsyncClient(headers=_headers(token), timeout=15) as client:
         # Fetch in parallel where possible
         info_resp = await client.get(f"{_API_BASE}/repos/{owner}/{repo}")
 

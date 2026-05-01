@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2 } from 'lucide-react'
+import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2, Github } from 'lucide-react'
 
 import { API_BASE } from '@/lib/config'
 
@@ -21,6 +21,12 @@ export default function PortalPage() {
   const [copied, setCopied] = useState(false)
   const [revoking, setRevoking] = useState<string | null>(null)
 
+  // GitHub token state
+  const [githubHasToken, setGithubHasToken] = useState(false)
+  const [githubInput, setGithubInput] = useState('')
+  const [githubEditing, setGithubEditing] = useState(false)
+  const [githubSaving, setGithubSaving] = useState(false)
+
   const fetchTokens = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/portal/tokens`)
     if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
@@ -29,7 +35,12 @@ export default function PortalPage() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchTokens() }, [fetchTokens])
+  const fetchGithubStatus = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/portal/github-token`)
+    if (res.ok) { const d = await res.json(); setGithubHasToken(d.has_token) }
+  }, [])
+
+  useEffect(() => { fetchTokens(); fetchGithubStatus() }, [fetchTokens, fetchGithubStatus])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -64,6 +75,26 @@ export default function PortalPage() {
   async function handleLogout() {
     await fetch(`${API_BASE}/api/auth/user-logout`, { method: 'POST' })
     window.location.href = '/panel/mcp-user/login'
+  }
+
+  async function handleSaveGithubToken() {
+    if (!githubInput.trim()) return
+    setGithubSaving(true)
+    await fetch(`${API_BASE}/api/portal/github-token`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: githubInput.trim() }),
+    })
+    setGithubSaving(false)
+    setGithubEditing(false)
+    setGithubInput('')
+    fetchGithubStatus()
+  }
+
+  async function handleRemoveGithubToken() {
+    if (!confirm('Remove your GitHub token? GitHub tools will fall back to the server default.')) return
+    await fetch(`${API_BASE}/api/portal/github-token`, { method: 'DELETE' })
+    setGithubHasToken(false)
   }
 
   const activeTokens = tokens.filter(t => !t.revoked)
@@ -180,6 +211,56 @@ export default function PortalPage() {
             </div>
           </div>
         )}
+
+        {/* GitHub PAT */}
+        <div className="bg-white rounded-2xl border border-gray-200">
+          <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <Github className="w-4 h-4 text-gray-500" /> GitHub Personal Access Token
+            </h2>
+            {githubHasToken && !githubEditing && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setGithubEditing(true)}
+                  className="text-xs text-blue-600 hover:underline">Replace</button>
+                <button onClick={handleRemoveGithubToken}
+                  className="text-xs text-red-500 hover:underline">Remove</button>
+              </div>
+            )}
+          </div>
+          <div className="p-5">
+            {githubEditing ? (
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500">
+                  Generate at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline">github.com/settings/tokens</a>.
+                  Minimum scope: <code className="bg-gray-100 px-1 rounded">repo</code> (read-only is enough).
+                </p>
+                <div className="flex gap-2">
+                  <input type="password" value={githubInput} onChange={e => setGithubInput(e.target.value)}
+                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autoFocus
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <button onClick={handleSaveGithubToken} disabled={githubSaving || !githubInput.trim()}
+                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-60">
+                    {githubSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button onClick={() => { setGithubEditing(false); setGithubInput('') }}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                </div>
+              </div>
+            ) : githubHasToken ? (
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                <p className="text-sm text-gray-700">Token saved — GitHub tools will use your personal token.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-400">No token set. GitHub tools use the server default (if configured).</p>
+                <button onClick={() => setGithubEditing(true)}
+                  className="text-sm text-blue-600 hover:underline">Add your GitHub token</button>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
 
       {/* Create token modal */}

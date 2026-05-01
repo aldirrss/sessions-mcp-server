@@ -37,6 +37,7 @@ def _user_row(row) -> dict:
         "email": row["email"],
         "role": row["role"],
         "is_active": row["is_active"],
+        "github_token": row["github_token"] if "github_token" in row.keys() else None,
         "created_at": str(row["created_at"]),
         "updated_at": str(row["updated_at"]),
     }
@@ -128,6 +129,17 @@ async def set_user_role(user_id: str, role: str) -> bool:
     return result != "UPDATE 0"
 
 
+async def update_github_token(user_id: str, token: Optional[str]) -> bool:
+    """Save or clear the user's GitHub Personal Access Token."""
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE users SET github_token = $1 WHERE id = $2",
+            token or None, user_id,
+        )
+    return result != "UPDATE 0"
+
+
 async def set_user_active(user_id: str, active: bool) -> bool:
     pool = await db.get_pool()
     async with pool.acquire() as conn:
@@ -177,7 +189,7 @@ async def validate_token(raw: str) -> Optional[dict]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT u.id, u.username, u.email, u.role, u.is_active,
+            SELECT u.id, u.username, u.email, u.role, u.is_active, u.github_token,
                    t.id AS token_id, t.revoked, t.expires_at
             FROM user_tokens t
             JOIN users u ON u.id = t.user_id
@@ -200,6 +212,7 @@ async def validate_token(raw: str) -> Optional[dict]:
         "username": row["username"],
         "email": row["email"],
         "role": row["role"],
+        "github_token": row["github_token"],
     }
 
 

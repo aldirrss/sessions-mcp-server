@@ -3,6 +3,7 @@ import logging
 from mcp.server.fastmcp import FastMCP
 
 import db
+from auth.context import get_current_user
 from .client import get_repo_context, format_repo_context, _parse_repo
 from .models import SessionLinkRepoInput, SessionUnlinkRepoInput, RepoGetContextInput
 
@@ -142,10 +143,14 @@ def register(mcp: FastMCP) -> None:
                     "Use `session_link_repo` to link one first."
                 )
 
+            user = get_current_user()
+            user_token = user.get("github_token") if user else None
+
             data = await get_repo_context(
                 row["repo_url"],
                 commit_limit=params.commit_limit,
                 include_prs=params.include_prs,
+                token=user_token,
             )
             return format_repo_context(data)
         except ValueError as e:
