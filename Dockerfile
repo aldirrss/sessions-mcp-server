@@ -20,6 +20,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY config.py db.py server.py ./
+COPY auth/ ./auth/
 COPY tools/ ./tools/
 
 # Non-root user for safety
