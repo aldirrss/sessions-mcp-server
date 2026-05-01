@@ -15,7 +15,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from passlib.hash import bcrypt
+import bcrypt as _bcrypt
 
 import db
 
@@ -61,7 +61,7 @@ def _token_row(row) -> dict:
 
 async def register_user(username: str, email: str, password: str) -> dict:
     """Create a new user. Raises ValueError on duplicate username/email."""
-    password_hash = bcrypt.hash(password)
+    password_hash = _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
     pool = await db.get_pool()
     async with pool.acquire() as conn:
         try:
@@ -96,7 +96,7 @@ async def authenticate_user(username_or_email: str, password: str) -> Optional[d
         )
     if row is None:
         return None
-    if not bcrypt.verify(password, row["password_hash"]):
+    if not _bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
         return None
     return _user_row(row)
 

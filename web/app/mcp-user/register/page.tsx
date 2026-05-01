@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { UserPlus, Copy, Check, Terminal, Code2 } from 'lucide-react'
 
@@ -15,6 +15,9 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<TokenResult | null>(null)
   const [copied, setCopied] = useState(false)
+  const [mcpUrl, setMcpUrl] = useState('')
+
+  useEffect(() => { setMcpUrl(`${window.location.origin}/mcp`) }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -80,7 +83,7 @@ export default function RegisterPage() {
                     <span className="text-xs font-semibold text-gray-600">Claude Code CLI</span>
                   </div>
                   <code className="text-xs text-gray-700 font-mono break-all">
-                    claude mcp add lm-mcp-ai --transport http --url https://mcp.yourdomain.com/mcp --header &quot;Authorization: Bearer {result.token}&quot;
+                    claude mcp add lm-mcp-ai --transport http --url {mcpUrl} --header &quot;Authorization: Bearer {result.token}&quot;
                   </code>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
@@ -93,7 +96,7 @@ export default function RegisterPage() {
   "mcpServers": {
     "lm-mcp-ai": {
       "type": "http",
-      "url": "https://mcp.yourdomain.com/mcp",
+      "url": "${mcpUrl}",
       "headers": { "Authorization": "Bearer ${result.token}" }
     }
   }
