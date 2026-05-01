@@ -11,17 +11,20 @@ export async function GET(req: NextRequest) {
   const limit = 20
   const offset = (page - 1) * limit
 
+  const showArchived = searchParams.get('archived') === 'true'
+
   const rows = await sql`
     SELECT
-      s.session_id, s.title, s.source, s.tags, s.updated_at,
+      s.session_id, s.title, s.source, s.tags, s.pinned, s.archived, s.updated_at,
       COUNT(n.id)::int AS notes_count
     FROM sessions s
     LEFT JOIN notes n ON n.session_id = s.session_id
     WHERE
       (${search} = '' OR s.title ILIKE ${'%' + search + '%'} OR s.session_id ILIKE ${'%' + search + '%'})
       AND (${source} = '' OR s.source = ${source})
+      AND (${showArchived} OR s.archived = false)
     GROUP BY s.session_id
-    ORDER BY s.updated_at DESC
+    ORDER BY s.pinned DESC, s.updated_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `
 
@@ -30,6 +33,7 @@ export async function GET(req: NextRequest) {
     WHERE
       (${search} = '' OR title ILIKE ${'%' + search + '%'} OR session_id ILIKE ${'%' + search + '%'})
       AND (${source} = '' OR source = ${source})
+      AND (${showArchived} OR archived = false)
   `
 
   return NextResponse.json({ rows, total: total.count, page, limit })

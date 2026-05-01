@@ -14,9 +14,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const notes = await sql`
-    SELECT id, content, source, created_at
+    SELECT id, content, source, pinned, created_at
     FROM notes WHERE session_id = ${id}
-    ORDER BY created_at ASC
+    ORDER BY pinned DESC, created_at ASC
   `
 
   const skills = await sql`
@@ -35,28 +35,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const body = await req.json()
 
   const hasRepoUrl = Object.hasOwn(body, 'repo_url')
+  const hasPinned = Object.hasOwn(body, 'pinned')
+  const hasArchived = Object.hasOwn(body, 'archived')
 
-  let updated: Record<string, unknown> | undefined
+  // Build update dynamically based on which fields are present
+  // postgres tagged template doesn't support truly dynamic fields,
+  // so we use COALESCE for optional fields and explicit SET for boolean flags
+  const repoUrl: string | null = hasRepoUrl ? (body.repo_url || null) : undefined as unknown as null
 
-  if (hasRepoUrl) {
-    const repoUrl: string | null = body.repo_url || null
-    ;[updated] = await sql`
-      UPDATE sessions SET
-        title    = COALESCE(${body.title ?? null}, title),
-        tags     = COALESCE(${body.tags ?? null}, tags),
-        repo_url = ${repoUrl}
-      WHERE session_id = ${id}
-      RETURNING session_id, title, source, tags, repo_url, updated_at
-    `
-  } else {
-    ;[updated] = await sql`
-      UPDATE sessions SET
-        title = COALESCE(${body.title ?? null}, title),
-        tags  = COALESCE(${body.tags ?? null}, tags)
-      WHERE session_id = ${id}
-      RETURNING session_id, title, source, tags, repo_url, updated_at
-    `
-  }
+  const [updated] = await sql`
+    UPDATE sessions SET
+      title    = COALESCE(${body.title ?? null}, title),
+      tags     = COALESCE(${body.tags ?? null}, tags),
+      repo_url = CASE WHEN ${hasRepoUrl} THEN ${repoUrl} ELSE repo_url END,
+      pinned   = CASE WHEN ${hasPinned} THEN ${body.pinned ?? false} ELSE pinned END,
+      archived = CASE WHEN ${hasArchived} THEN ${body.archived ?? false} ELSE archived END
+    WHERE session_id = ${id}
+    RETURNING session_id, title, source, tags, pinned, archived, repo_url, updated_at
+  `
 
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(updated)
