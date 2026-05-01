@@ -3,15 +3,16 @@
 import { use, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Trash2, Plus, BookOpen, Github, ExternalLink, Unlink } from 'lucide-react'
+import { ArrowLeft, Trash2, Plus, BookOpen, Github, ExternalLink, Unlink, Pin, Archive, RotateCcw } from 'lucide-react'
 
 const API_BASE = '/panel/mcp-admin'
 
-type Note = { id: number; content: string; source: string; created_at: string }
+type Note = { id: number; content: string; source: string; pinned: boolean; created_at: string }
 type Skill = { slug: string; name: string; category: string | null; used_at: string }
 type Session = {
   session_id: string; title: string; context: string; source: string
-  tags: string[]; repo_url: string | null; notes: Note[]; skills: Skill[]; updated_at: string
+  tags: string[]; pinned: boolean; archived: boolean; repo_url: string | null
+  notes: Note[]; skills: Skill[]; updated_at: string
 }
 
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,6 +26,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   const [repoUrl, setRepoUrl] = useState('')
   const [editingRepo, setEditingRepo] = useState(false)
   const [savingRepo, setSavingRepo] = useState(false)
+  const [togglingNote, setTogglingNote] = useState<number | null>(null)
   const [noteContent, setNoteContent] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -87,6 +89,39 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     fetchSession()
   }
 
+  async function handleTogglePin() {
+    if (!session) return
+    await fetch(`${API_BASE}/api/sessions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinned: !session.pinned }),
+    })
+    fetchSession()
+  }
+
+  async function handleToggleArchive() {
+    if (!session) return
+    const action = session.archived ? 'restore' : 'archive'
+    if (!confirm(`${action === 'archive' ? 'Archive' : 'Restore'} session "${id}"?`)) return
+    await fetch(`${API_BASE}/api/sessions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archived: !session.archived }),
+    })
+    fetchSession()
+  }
+
+  async function handleToggleNotePin(noteId: number, currentPinned: boolean) {
+    setTogglingNote(noteId)
+    await fetch(`${API_BASE}/api/sessions/${id}/notes/${noteId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinned: !currentPinned }),
+    })
+    setTogglingNote(null)
+    fetchSession()
+  }
+
   async function handleAddNote(e: React.FormEvent) {
     e.preventDefault()
     setAddingNote(true)
@@ -109,9 +144,22 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         <Link href="/sessions" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Sessions
         </Link>
-        <button onClick={handleDelete} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-          <Trash2 className="w-4 h-4" /> Delete
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleTogglePin}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${session.pinned ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'text-gray-500 hover:bg-gray-100'}`}
+            title={session.pinned ? 'Unpin session' : 'Pin session (protect from auto-vacuum)'}>
+            <Pin className="w-4 h-4" /> {session.pinned ? 'Pinned' : 'Pin'}
+          </button>
+          <button onClick={handleToggleArchive}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${session.archived ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'text-gray-500 hover:bg-gray-100'}`}
+            title={session.archived ? 'Restore session' : 'Archive session (soft delete)'}>
+            {session.archived ? <RotateCcw className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+            {session.archived ? 'Restore' : 'Archive'}
+          </button>
+          <button onClick={handleDelete} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+            <Trash2 className="w-4 h-4" /> Delete
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
@@ -226,9 +274,22 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         ) : (
           <div className="space-y-3">
             {session.notes.map((note) => (
-              <div key={note.id} className="rounded-xl bg-gray-50 border border-gray-100 p-4">
+              <div key={note.id} className={`rounded-xl border p-4 ${note.pinned ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'}`}>
                 <p className="text-sm text-gray-900 whitespace-pre-wrap">{note.content}</p>
-                <p className="text-xs text-gray-400 mt-2">{note.source} · {new Date(note.created_at).toLocaleString()}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs text-gray-400">
+                    {note.pinned && <span className="text-amber-600 font-medium mr-1">📌 pinned ·</span>}
+                    {note.source} · {new Date(note.created_at).toLocaleString()}
+                  </p>
+                  <button
+                    onClick={() => handleToggleNotePin(note.id, note.pinned)}
+                    disabled={togglingNote === note.id}
+                    className={`text-xs px-2 py-0.5 rounded transition-colors ${note.pinned ? 'text-amber-600 hover:bg-amber-100' : 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'}`}
+                    title={note.pinned ? 'Unpin note' : 'Pin note (always shown at top, never vacuumed)'}
+                  >
+                    {note.pinned ? 'Unpin' : 'Pin'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

@@ -8,7 +8,8 @@ const API_BASE = '/panel/mcp-admin'
 
 type Session = {
   session_id: string; title: string; source: string
-  tags: string[]; notes_count: number; updated_at: string
+  tags: string[]; pinned: boolean; archived: boolean
+  notes_count: number; updated_at: string
 }
 
 function Badge({ label }: { label: string }) {
@@ -24,6 +25,7 @@ export default function SessionsPage() {
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
   const [source, setSource] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
@@ -34,13 +36,13 @@ export default function SessionsPage() {
 
   const fetchSessions = useCallback(async () => {
     setLoading(true)
-    const q = new URLSearchParams({ search, source, page: String(page) })
+    const q = new URLSearchParams({ search, source, page: String(page), archived: String(showArchived) })
     const res = await fetch(`${API_BASE}/api/sessions?${q}`)
     const data = await res.json()
     setRows(data.rows)
     setTotal(data.total)
     setLoading(false)
-  }, [search, source, page])
+  }, [search, source, page, showArchived])
 
   useEffect(() => { fetchSessions() }, [fetchSessions])
 
@@ -103,6 +105,15 @@ export default function SessionsPage() {
           <option value="vscode">vscode</option>
           <option value="unknown">unknown</option>
         </select>
+        <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm cursor-pointer select-none hover:bg-gray-50">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={e => { setShowArchived(e.target.checked); setPage(1) }}
+            className="rounded"
+          />
+          Archived
+        </label>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -125,8 +136,14 @@ export default function SessionsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map((s) => (
-                <tr key={s.session_id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{s.session_id}</td>
+                <tr key={s.session_id} className={`hover:bg-gray-50 transition-colors ${s.archived ? 'opacity-60' : ''}`}>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      {s.pinned && <span title="Pinned">📌</span>}
+                      {s.archived && <span title="Archived">🗄</span>}
+                      {s.session_id}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">{s.title}</td>
                   <td className="px-4 py-3"><Badge label={s.source} /></td>
                   <td className="px-4 py-3">

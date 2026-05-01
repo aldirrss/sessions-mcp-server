@@ -95,3 +95,24 @@ use `skill_search` or `skill_list` instead of relying on memory.
 
 ### Config
 `config_write`, `config_read`, `config_list`, `config_delete`
+
+### Notes (Ide 3 — auto-notes)
+`note_pin`, `note_unpin`, `session_compact`
+
+Pinned notes always appear at the top of `session_read` and are never deleted by vacuum.
+Use `note_pin` for critical decisions that must stay visible across long sessions.
+Use `session_compact` when a session has too many old notes to fit in context — it merges
+them into the context field and deletes them, keeping the session lean.
+
+### Session lifecycle (Ide 4 — auto-vacuum)
+`session_pin`, `session_unpin`, `session_archive`, `session_restore`, `vacuum_run`
+
+- `session_pin` — protect session from auto-vacuum indefinitely
+- `session_archive` — soft-delete (hidden from list, restored with session_restore)
+- `vacuum_run(dry_run=true)` — preview what would be cleaned up
+- `vacuum_run(dry_run=false)` — execute vacuum (also runs automatically daily if vacuum_enabled=true)
+
+Vacuum config keys (set via `config_write`):
+- `vacuum_enabled` — 'true'/'false' (default false)
+- `vacuum_notes_days` — int, default 90
+- `vacuum_sessions_days` — int, default 180

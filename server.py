@@ -9,6 +9,7 @@ Auth      : Two accepted methods (checked in order):
                URL: https://mcp.yourdomain.com/mcp?key=YOUR_API_KEY
 """
 
+import asyncio
 import json
 import logging
 import sys
@@ -36,6 +37,7 @@ from tools.sessions import register as register_sessions
 from tools.skills import register as register_skills
 from tools.github import register as register_github
 from tools.config import register as register_config
+from tools.vacuum import register as register_vacuum
 
 # ---------------------------------------------------------------------------
 # Logging — use stderr so stdout stays clean for MCP protocol
@@ -109,6 +111,7 @@ register_sessions(mcp)
 register_skills(mcp)
 register_github(mcp)
 register_config(mcp)
+register_vacuum(mcp)
 
 
 # ---------------------------------------------------------------------------
@@ -132,12 +135,34 @@ if __name__ == "__main__":
     # that is required before any request can be handled.
     _fastmcp_lifespan = app.router.lifespan_context
 
+    async def _daily_vacuum_loop():
+        """Run vacuum once per day if vacuum_enabled=true in config."""
+        while True:
+            await asyncio.sleep(24 * 3600)
+            try:
+                from tools.vacuum.store import run_vacuum, _get_vacuum_config
+                cfg = await _get_vacuum_config()
+                if cfg["enabled"]:
+                    result = await run_vacuum(dry_run=False)
+                    _logger.info(
+                        "Auto-vacuum: notes=%d archived=%d deleted=%d",
+                        result["notes_deleted"],
+                        result["sessions_archived"],
+                        result["sessions_deleted"],
+                    )
+                else:
+                    _logger.debug("Auto-vacuum skipped (vacuum_enabled=false)")
+            except Exception as exc:
+                _logger.error("Auto-vacuum error: %s", exc)
+
     @asynccontextmanager
     async def _combined_lifespan(_app):
         await db.init_schema()
         _logger.info("Session store (PostgreSQL) ready")
+        vacuum_task = asyncio.create_task(_daily_vacuum_loop())
         async with _fastmcp_lifespan(_app):
             yield
+        vacuum_task.cancel()
         await db.close_pool()
 
     app.router.lifespan_context = _combined_lifespan

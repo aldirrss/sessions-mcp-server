@@ -124,6 +124,25 @@ _DDL_STEPS = [
     # Add repo_url column to sessions (GitHub Integration — Ide 1)
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repo_url TEXT",
 
+    # Ide 3 — pinned flag on notes (important notes shown prominently in session_read)
+    "ALTER TABLE notes ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false",
+
+    # Ide 4 — pinned + archived flags on sessions
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS pinned  BOOLEAN NOT NULL DEFAULT false",
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false",
+
+    # Index for archived filter — most queries exclude archived sessions
+    "CREATE INDEX IF NOT EXISTS idx_sessions_archived ON sessions (archived, updated_at DESC)",
+
+    # Seed default vacuum config (do nothing if already set — ON CONFLICT DO NOTHING)
+    """
+    INSERT INTO config (key, value, description) VALUES
+        ('vacuum_enabled',       'false', 'Enable scheduled auto-vacuum (true/false)'),
+        ('vacuum_notes_days',    '90',    'Delete notes older than this many days'),
+        ('vacuum_sessions_days', '180',   'Hard-delete archived sessions older than this many days')
+    ON CONFLICT (key) DO NOTHING
+    """,
+
     # -----------------------------------------------------------------------
     # Config table — key-value store for Claude behavior configuration (Ide 2)
     # -----------------------------------------------------------------------

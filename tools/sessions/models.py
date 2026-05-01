@@ -96,6 +96,10 @@ class SessionDeleteInput(BaseModel):
 class SessionListInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tag: Optional[str] = Field(default=None, description="Filter sessions by tag. Omit to list all.")
+    show_archived: bool = Field(
+        default=False,
+        description="Include archived sessions in results (default false).",
+    )
 
 
 class SessionSearchInput(BaseModel):
@@ -104,3 +108,64 @@ class SessionSearchInput(BaseModel):
         ..., description="Keyword to search across title, context, notes, and tags.",
         min_length=1,
     )
+
+
+class NotePinInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note_id: int = Field(..., description="ID of the note to pin.", ge=1)
+    session_id: str = Field(..., description="Session ID the note belongs to.", min_length=1, max_length=100)
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        return _validate_session_id(v)
+
+
+class NoteUnpinInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note_id: int = Field(..., description="ID of the note to unpin.", ge=1)
+    session_id: str = Field(..., description="Session ID the note belongs to.", min_length=1, max_length=100)
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        return _validate_session_id(v)
+
+
+class SessionCompactInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(..., description="Session ID to compact.", min_length=1, max_length=100)
+    before_days: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        description=(
+            "Compact unpinned notes older than this many days into the context field "
+            "and delete them. Pinned notes are never compacted. Default: 30 days."
+        ),
+    )
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        return _validate_session_id(v)
+
+
+class SessionPinInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(..., description="Session ID to pin.", min_length=1, max_length=100)
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        return _validate_session_id(v)
+
+
+class SessionArchiveInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(..., description="Session ID to archive or restore.", min_length=1, max_length=100)
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        return _validate_session_id(v)
