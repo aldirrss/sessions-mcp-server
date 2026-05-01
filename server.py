@@ -3,10 +3,17 @@
 lm-mcp-ai — MCP Server entry point.
 
 Transport : Streamable HTTP  (connects to claude.ai web and Claude Code CLI/VSCode)
-Auth      : Two accepted methods (checked in order):
-            1. X-API-Key header        → for Claude Code CLI / VSCode / curl
-            2. ?key= query parameter   → for claude.ai web connector (no header UI)
-               URL: https://mcp.yourdomain.com/mcp?key=YOUR_API_KEY
+Auth      : Per-user Bearer tokens (from /oauth flow or user dashboard).
+            Fallback: MCP_API_KEY env var as master key (backward compat).
+
+OAuth 2.0 Authorization Server (MCP spec):
+  GET  /.well-known/oauth-authorization-server
+  GET  /.well-known/oauth-protected-resource
+  POST /oauth/register   — dynamic client registration (RFC 7591)
+  GET  /oauth/authorize  — browser login + authorize form
+  POST /oauth/authorize
+  POST /oauth/token      — exchange code for Bearer token
+  POST /oauth/revoke
 """
 
 import asyncio
@@ -17,8 +24,6 @@ import sys
 import config
 
 # Monkey-patch TransportSecurityMiddleware BEFORE FastMCP is imported.
-# validate_request returning None means "request is valid, continue".
-# Safe because nginx enforces TLS and ApiKeyMiddleware handles all auth.
 import mcp.server.transport_security as _ts
 
 async def _validate_all(self, request, is_post=False):
@@ -32,15 +37,17 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 import db
+from tools.auth.context import set_current_user
 from tools.docker import register as register_docker
 from tools.sessions import register as register_sessions
 from tools.skills import register as register_skills
 from tools.github import register as register_github
 from tools.config import register as register_config
 from tools.vacuum import register as register_vacuum
+from tools.auth import register as register_auth
 
 # ---------------------------------------------------------------------------
-# Logging — use stderr so stdout stays clean for MCP protocol
+# Logging
 # ---------------------------------------------------------------------------
 
 logging.basicConfig(
@@ -52,53 +59,80 @@ _logger = logging.getLogger("lm-mcp-ai")
 
 
 # ---------------------------------------------------------------------------
-# Auth middleware
+# Auth middleware — per-user Bearer token (OAuth) or master API key
 # ---------------------------------------------------------------------------
 
-class ApiKeyMiddleware(BaseHTTPMiddleware):
+class UserAuthMiddleware(BaseHTTPMiddleware):
     """
-    Enforce API key only on /mcp path.
-    All other paths (OAuth discovery, well-known, health) pass through freely
-    so claude.ai can complete its OAuth probe before falling back to key auth.
+    Authenticate requests on /mcp paths using:
+      1. Authorization: Bearer <token>  — user PAT or OAuth token
+      2. ?token=<token>                 — query param fallback (claude.ai web)
+      3. X-API-Key / ?key=              — legacy master key (backward compat)
 
-    Accepted key locations (checked in order):
-      1. X-API-Key header  — Claude Code CLI / curl
-      2. ?key= query param — claude.ai web connector (no header UI support)
+    Public paths (no auth required): /.well-known/*, /oauth/*, /health
+    WWW-Authenticate header is set on 401 so MCP clients auto-discover OAuth server.
     """
 
-    _OPEN_PREFIXES = (
-        "/.well-known/",
-        "/health",
-        "/register",
-        "/oauth",
-    )
+    _OPEN_PREFIXES = ("/.well-known/", "/oauth/", "/health")
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
 
-        for prefix in self._OPEN_PREFIXES:
-            if path.startswith(prefix):
-                return await call_next(request)
+        if any(path.startswith(p) for p in self._OPEN_PREFIXES):
+            return await call_next(request)
 
         if not (path.startswith("/mcp") or path == "/"):
             return await call_next(request)
 
-        api_key = (
-            request.headers.get("X-API-Key")
+        token = (
+            self._bearer(request)
+            or request.query_params.get("token")
+            or request.headers.get("X-API-Key")
             or request.headers.get("x-api-key")
+            or request.query_params.get("key")
         )
 
-        if not api_key:
-            api_key = request.query_params.get("key")
+        if not token:
+            return self._unauthorized()
 
-        if api_key != config.MCP_API_KEY:
-            _logger.warning("Unauthorized /mcp request from %s", request.client)
-            return Response(
-                content=json.dumps({"error": "Unauthorized"}),
-                status_code=401,
-                media_type="application/json",
-            )
-        return await call_next(request)
+        # Master key (backward compat / admin operations)
+        if config.MCP_API_KEY and token == config.MCP_API_KEY:
+            set_current_user({"id": None, "username": "admin", "role": "admin", "email": ""})
+            return await call_next(request)
+
+        # Per-user token from DB
+        from tools.auth.store import validate_token
+        user = await validate_token(token)
+        if not user:
+            return self._unauthorized()
+
+        set_current_user(user)
+        try:
+            return await call_next(request)
+        finally:
+            set_current_user(None)
+
+    @staticmethod
+    def _bearer(request: Request) -> str:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            return auth[7:].strip()
+        return ""
+
+    @staticmethod
+    def _unauthorized() -> Response:
+        base = config.MCP_EXTERNAL_URL.rstrip("/")
+        return Response(
+            content=json.dumps({"error": "Unauthorized", "error_description": "Valid Bearer token required"}),
+            status_code=401,
+            media_type="application/json",
+            headers={
+                "WWW-Authenticate": (
+                    f'Bearer realm="lm-mcp-ai", '
+                    f'resource_metadata="{base}/.well-known/oauth-protected-resource"'
+                )
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +146,7 @@ register_skills(mcp)
 register_github(mcp)
 register_config(mcp)
 register_vacuum(mcp)
+register_auth(mcp)
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +156,7 @@ register_vacuum(mcp)
 if __name__ == "__main__":
     import uvicorn
     from contextlib import asynccontextmanager
+    from tools.auth.oauth import oauth_routes
 
     _logger.info(
         "Starting lm-mcp-ai on %s:%d (streamable_http)",
@@ -130,13 +166,14 @@ if __name__ == "__main__":
 
     app = mcp.streamable_http_app()
 
-    # Wrap FastMCP's own lifespan — must not replace it, only extend it.
-    # FastMCP's lifespan initializes the StreamableHTTPSessionManager task group
-    # that is required before any request can be handled.
+    # Inject OAuth routes into Starlette router BEFORE MCP catch-all
+    from starlette.routing import Route as StarletteRoute
+    app.router.routes = list(oauth_routes) + list(app.router.routes)
+
+    # Extend FastMCP's own lifespan
     _fastmcp_lifespan = app.router.lifespan_context
 
     async def _daily_vacuum_loop():
-        """Run vacuum once per day if vacuum_enabled=true in config."""
         while True:
             await asyncio.sleep(24 * 3600)
             try:
@@ -166,15 +203,6 @@ if __name__ == "__main__":
         await db.close_pool()
 
     app.router.lifespan_context = _combined_lifespan
+    app.add_middleware(UserAuthMiddleware)
 
-    # TransportSecurityMiddleware is already neutralized via the class-level
-    # monkey-patch at module load time (_validate_all returns None).
-    # No instance patching needed.
-
-    app.add_middleware(ApiKeyMiddleware)
-
-    uvicorn.run(
-        app,
-        host=config.MCP_HOST,
-        port=config.MCP_PORT,
-    )
+    uvicorn.run(app, host=config.MCP_HOST, port=config.MCP_PORT)
