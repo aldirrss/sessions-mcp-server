@@ -171,6 +171,89 @@ _DDL_STEPS = [
     """,
 
     # -----------------------------------------------------------------------
+    # Auth — users, tokens, OAuth codes, session ownership
+    # -----------------------------------------------------------------------
+
+    # Users table
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        username      TEXT        UNIQUE NOT NULL,
+        email         TEXT        UNIQUE NOT NULL,
+        password_hash TEXT        NOT NULL,
+        role          TEXT        NOT NULL DEFAULT 'user',
+        is_active     BOOLEAN     NOT NULL DEFAULT true,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    # Trigger updated_at for users
+    """
+    DO $$ BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'trg_users_updated_at'
+        ) THEN
+            CREATE TRIGGER trg_users_updated_at
+                BEFORE UPDATE ON users
+                FOR EACH ROW
+                EXECUTE FUNCTION fn_touch_updated_at();
+        END IF;
+    END; $$
+    """,
+
+    # Personal Access Tokens — token_hash is SHA-256 of the raw token
+    """
+    CREATE TABLE IF NOT EXISTS user_tokens (
+        id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash   TEXT        UNIQUE NOT NULL,
+        name         TEXT        NOT NULL DEFAULT 'Default',
+        last_used_at TIMESTAMPTZ,
+        expires_at   TIMESTAMPTZ,
+        revoked      BOOLEAN     NOT NULL DEFAULT false,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    # OAuth authorization codes — short-lived, single-use (PKCE S256)
+    """
+    CREATE TABLE IF NOT EXISTS oauth_codes (
+        code            TEXT        PRIMARY KEY,
+        user_id         UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_id       TEXT        NOT NULL,
+        redirect_uri    TEXT        NOT NULL,
+        code_challenge  TEXT        NOT NULL,
+        expires_at      TIMESTAMPTZ NOT NULL,
+        used            BOOLEAN     NOT NULL DEFAULT false
+    )
+    """,
+
+    # Session ownership — many-to-many (owner + collaborators)
+    """
+    CREATE TABLE IF NOT EXISTS session_users (
+        session_id  TEXT        NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+        user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role        TEXT        NOT NULL DEFAULT 'owner',
+        joined_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (session_id, user_id)
+    )
+    """,
+
+    # owner_id shortcut on sessions (denormalized for fast lookup)
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id)",
+
+    # Indexes
+    "CREATE INDEX IF NOT EXISTS idx_users_email       ON users (email)",
+    "CREATE INDEX IF NOT EXISTS idx_users_username    ON users (username)",
+    "CREATE INDEX IF NOT EXISTS idx_user_tokens_user  ON user_tokens (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_user_tokens_hash  ON user_tokens (token_hash)",
+    "CREATE INDEX IF NOT EXISTS idx_oauth_codes_code  ON oauth_codes (code)",
+    "CREATE INDEX IF NOT EXISTS idx_session_users_session ON session_users (session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_session_users_user    ON session_users (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_owner        ON sessions (owner_id)",
+
+    # -----------------------------------------------------------------------
     # Skills library
     # -----------------------------------------------------------------------
 

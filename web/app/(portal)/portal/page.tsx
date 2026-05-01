@@ -1,0 +1,215 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2 } from 'lucide-react'
+
+const API_BASE = '/panel/mcp-admin'
+
+type Token = {
+  id: string; name: string; last_used_at: string | null
+  expires_at: string | null; revoked: boolean; created_at: string
+}
+
+export default function PortalPage() {
+  const [tokens, setTokens] = useState<Token[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showCreate, setShowCreate] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newExpires, setNewExpires] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [newToken, setNewToken] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [revoking, setRevoking] = useState<string | null>(null)
+
+  const fetchTokens = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/portal/tokens`)
+    if (res.status === 401) { window.location.href = `${API_BASE}/user-login`; return }
+    const data = await res.json()
+    setTokens(data.tokens ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchTokens() }, [fetchTokens])
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    setCreating(true)
+    const res = await fetch(`${API_BASE}/api/portal/tokens`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName, expires_days: newExpires ? Number(newExpires) : null }),
+    })
+    const data = await res.json()
+    setCreating(false)
+    setShowCreate(false)
+    setNewName(''); setNewExpires('')
+    setNewToken(data.token)
+    fetchTokens()
+  }
+
+  async function handleRevoke(id: string) {
+    if (!confirm('Revoke this token? It will stop working immediately.')) return
+    setRevoking(id)
+    await fetch(`${API_BASE}/api/portal/tokens/${id}`, { method: 'DELETE' })
+    setRevoking(null)
+    fetchTokens()
+  }
+
+  async function copyToken(token: string) {
+    await navigator.clipboard.writeText(token)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function handleLogout() {
+    await fetch(`${API_BASE}/api/auth/user-logout`, { method: 'POST' })
+    window.location.href = `${API_BASE}/user-login`
+  }
+
+  const activeTokens = tokens.filter(t => !t.revoked)
+  const revokedTokens = tokens.filter(t => t.revoked)
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+            <Key className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h1 className="text-sm font-semibold text-gray-900">MCP Portal</h1>
+            <p className="text-xs text-gray-500">Manage your access tokens</p>
+          </div>
+        </div>
+        <button onClick={handleLogout}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+          <LogOut className="w-4 h-4" /> Sign out
+        </button>
+      </header>
+
+      <main className="max-w-3xl mx-auto p-6 space-y-6">
+
+        {/* New token alert */}
+        {newToken && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-amber-800">⚠️ New token — save it now, won&apos;t be shown again</p>
+              <button onClick={() => setNewToken(null)} className="text-amber-500 hover:text-amber-700 text-lg leading-none">✕</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-gray-900 text-green-400 px-3 py-2 rounded-lg text-xs font-mono break-all">{newToken}</code>
+              <button onClick={() => copyToken(newToken)}
+                className="flex-shrink-0 p-2 rounded-lg border border-amber-200 bg-white hover:bg-amber-50">
+                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-amber-600" />}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="bg-white rounded-xl border border-gray-200 p-3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-xs font-semibold text-gray-500">Claude Code CLI</span>
+                </div>
+                <code className="text-[10px] text-gray-600 font-mono break-all leading-relaxed">
+                  --header &quot;Authorization: Bearer {newToken.slice(0, 20)}…&quot;
+                </code>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Code2 className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-xs font-semibold text-gray-500">VSCode mcp.json</span>
+                </div>
+                <code className="text-[10px] text-gray-600 font-mono break-all leading-relaxed">
+                  &quot;Authorization&quot;: &quot;Bearer {newToken.slice(0, 20)}…&quot;
+                </code>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Active tokens */}
+        <div className="bg-white rounded-2xl border border-gray-200">
+          <div className="p-5 flex items-center justify-between border-b border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-900">Active Tokens ({activeTokens.length})</h2>
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+              <Plus className="w-4 h-4" /> New token
+            </button>
+          </div>
+
+          {loading ? (
+            <p className="text-sm text-gray-400 p-5">Loading…</p>
+          ) : activeTokens.length === 0 ? (
+            <p className="text-sm text-gray-400 p-5">No active tokens. Create one above.</p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {activeTokens.map(t => (
+                <div key={t.id} className="flex items-center justify-between px-5 py-3.5">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{t.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Created {new Date(t.created_at).toLocaleDateString()}
+                      {t.last_used_at && ` · Last used ${new Date(t.last_used_at).toLocaleDateString()}`}
+                      {t.expires_at && ` · Expires ${new Date(t.expires_at).toLocaleDateString()}`}
+                      {!t.expires_at && ' · No expiry'}
+                    </p>
+                  </div>
+                  <button onClick={() => handleRevoke(t.id)} disabled={revoking === t.id}
+                    className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Revoked tokens */}
+        {revokedTokens.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-200 opacity-60">
+            <div className="p-5 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-500">Revoked ({revokedTokens.length})</h2>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {revokedTokens.map(t => (
+                <div key={t.id} className="flex items-center px-5 py-3 gap-3">
+                  <p className="text-sm line-through text-gray-400 flex-1">{t.name}</p>
+                  <span className="text-xs text-red-400">Revoked</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Create token modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <form onSubmit={handleCreate} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
+            <h2 className="text-lg font-semibold text-gray-900">New Token</h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Token name</label>
+              <input required value={newName} onChange={e => setNewName(e.target.value)}
+                placeholder="e.g. VSCode laptop, CLI server"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Expires in (days) — optional</label>
+              <input type="number" min="1" max="3650" value={newExpires} onChange={e => setNewExpires(e.target.value)}
+                placeholder="Leave blank for no expiry"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setShowCreate(false)}
+                className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+              <button type="submit" disabled={creating}
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-60">
+                {creating ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
