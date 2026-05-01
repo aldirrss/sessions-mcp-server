@@ -243,7 +243,18 @@ _DDL_STEPS = [
     # owner_id shortcut on sessions (denormalized for fast lookup)
     "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id)",
 
+    # OAuth server-side sessions — keeps user logged in on the authorize page
+    """
+    CREATE TABLE IF NOT EXISTS oauth_sessions (
+        token       TEXT        PRIMARY KEY,
+        user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at  TIMESTAMPTZ NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
     # Indexes
+    "CREATE INDEX IF NOT EXISTS idx_oauth_sessions_user ON oauth_sessions (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_users_email       ON users (email)",
     "CREATE INDEX IF NOT EXISTS idx_users_username    ON users (username)",
     "CREATE INDEX IF NOT EXISTS idx_user_tokens_user  ON user_tokens (user_id)",

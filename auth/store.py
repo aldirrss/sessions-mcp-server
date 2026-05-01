@@ -233,6 +233,48 @@ async def revoke_token(token_id: str, user_id: Optional[str] = None) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# OAuth server-side sessions (keeps user logged in on the authorize page)
+# ---------------------------------------------------------------------------
+
+async def create_oauth_session(user_id: str, days: int = 7) -> str:
+    """Create a browser session token for the OAuth authorize page."""
+    token = secrets.token_urlsafe(32)
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO oauth_sessions (token, user_id, expires_at)
+            VALUES ($1, $2::uuid, now() + ($3 * interval '1 day'))
+            """,
+            token, user_id, days,
+        )
+    return token
+
+
+async def validate_oauth_session(token: str) -> Optional[dict]:
+    """Validate a browser session token. Returns user dict or None."""
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT u.id, u.username, u.email, u.role, u.is_active
+            FROM oauth_sessions s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.token = $1 AND s.expires_at > now()
+            """,
+            token,
+        )
+    if not row or not row["is_active"]:
+        return None
+    return {
+        "id": str(row["id"]),
+        "username": row["username"],
+        "email": row["email"],
+        "role": row["role"],
+    }
+
+
+# ---------------------------------------------------------------------------
 # OAuth PKCE codes
 # ---------------------------------------------------------------------------
 
