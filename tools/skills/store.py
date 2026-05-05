@@ -249,12 +249,25 @@ async def get_skill_versions(slug: str) -> list[dict]:
 async def track_skill(session_id: str, skill_slug: str) -> dict:
     """
     Record that a skill was used in a session.
-    Returns {"first_use": bool} — True if this is the first time in this session.
-    Caller should auto-append a note to the session if first_use is True.
+    Returns {"first_use": bool, "skipped": bool}.
+    skipped=True when the slug is not present in the skills table (external/user skills).
     """
     pool = await db.get_pool()
 
     async with pool.acquire() as conn:
+        skill = await conn.fetchrow(
+            "SELECT name, summary FROM skills WHERE slug = $1", skill_slug
+        )
+
+        if skill is None:
+            return {
+                "session_id": session_id,
+                "skill_slug": skill_slug,
+                "skill_name": skill_slug,
+                "first_use": False,
+                "skipped": True,
+            }
+
         result = await conn.execute(
             """
             INSERT INTO session_skills (session_id, skill_slug)
@@ -265,15 +278,12 @@ async def track_skill(session_id: str, skill_slug: str) -> dict:
         )
         first_use = result == "INSERT 0 1"
 
-        skill = await conn.fetchrow(
-            "SELECT name, summary FROM skills WHERE slug = $1", skill_slug
-        )
-
     return {
         "session_id": session_id,
         "skill_slug": skill_slug,
-        "skill_name": skill["name"] if skill else skill_slug,
-        "first_use":  first_use,
+        "skill_name": skill["name"],
+        "first_use": first_use,
+        "skipped": False,
     }
 
 

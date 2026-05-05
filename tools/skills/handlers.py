@@ -315,6 +315,11 @@ def register(mcp: FastMCP) -> None:
         try:
             result = await track_skill(params.session_id, params.skill_slug)
 
+            if result.get("skipped"):
+                return (
+                    f"Skill `{result['skill_slug']}` not found in skill library — tracking skipped."
+                )
+
             if result["first_use"]:
                 from tools.sessions.store import append_note
                 await append_note(
