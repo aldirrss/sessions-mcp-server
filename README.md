@@ -41,7 +41,7 @@ configuration, and automated data retention, all backed by PostgreSQL.
 │          ┌───────────────┴──────────────────────┐               │
 │          ▼  :8765                                ▼  :3100        │
 │  ┌───────────────────────────┐  ┌───────────────────────────┐   │
-│  │  lm-mcp-ai (FastMCP)      │  │  lm-mcp-web (Next.js 15)  │   │
+│  │  lema-mcp-ai (FastMCP)     │  │  lema-mcp-web (Next.js 15) │   │
 │  │  /mcp  /oauth/*           │  │  /panel/mcp-admin/*       │   │
 │  │  /.well-known/*           │  │  /panel/mcp-user/*        │   │
 │  └──────────────┬────────────┘  └──────────────┬────────────┘   │
@@ -59,9 +59,9 @@ configuration, and automated data retention, all backed by PostgreSQL.
 
 | Container | Image | Port (loopback) | Purpose |
 |-----------|-------|-----------------|---------|
-| `lm-mcp-postgres` | `postgres:15` | `127.0.0.1:15432` | Database |
-| `lm-mcp-ai` | custom (Python) | `127.0.0.1:8765` | MCP server + OAuth AS |
-| `lm-mcp-web` | custom (Next.js) | `127.0.0.1:3100` | Web panel |
+| `lema-mcp-postgres` | `postgres:15` | `127.0.0.1:15432` | Database |
+| `lema-mcp-ai` | custom (Python) | `127.0.0.1:8765` | MCP server + OAuth AS |
+| `lema-mcp-web` | custom (Next.js) | `127.0.0.1:3100` | Web panel |
 
 ---
 
@@ -123,9 +123,9 @@ Edit `web/.env` with the generated values (see [Environment Variables](#environm
 docker compose up -d --build
 docker compose ps
 # Expected:
-#   lm-mcp-postgres   Up (healthy)
-#   lm-mcp-ai         Up
-#   lm-mcp-web        Up
+#   lema-mcp-postgres   Up (healthy)
+#   lema-mcp-ai         Up
+#   lema-mcp-web        Up
 ```
 
 ---

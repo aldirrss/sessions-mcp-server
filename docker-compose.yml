@@ -2,7 +2,7 @@ services:
 
   postgres:
     image: postgres:15
-    container_name: lm-mcp-postgres
+    container_name: lema-mcp-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-mcp_sessions}
@@ -23,7 +23,7 @@ services:
 
   mcp:
     build: .
-    container_name: lm-mcp-ai
+    container_name: lema-mcp-ai
     restart: unless-stopped
     depends_on:
       postgres:
@@ -47,7 +47,7 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
-    container_name: lm-mcp-web
+    container_name: lema-mcp-web
     restart: unless-stopped
     depends_on:
       postgres:
