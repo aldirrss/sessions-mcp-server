@@ -22,13 +22,35 @@ import sys
 
 import config
 
-# Monkey-patch TransportSecurityMiddleware BEFORE FastMCP is imported.
+# Patch TransportSecurityMiddleware BEFORE FastMCP is imported.
+# Instead of bypassing validation entirely, validate Host/Origin against a whitelist
+# derived from MCP_EXTERNAL_URL (+ optional MCP_ALLOWED_ORIGINS env var).
 import mcp.server.transport_security as _ts
+from urllib.parse import urlparse as _urlparse
+from starlette.responses import Response as _Response
 
-async def _validate_all(self, request, is_post=False):
-    return None
 
-_ts.TransportSecurityMiddleware.validate_request = _validate_all
+async def _validate_origin(self, request, is_post=False):
+    allowed = config.MCP_ALLOWED_ORIGINS
+    if not allowed:
+        return None  # empty list = dev mode, allow all
+
+    host = request.headers.get("host", "").split(":")[0].lower()
+    if host in allowed:
+        return None
+
+    origin_header = request.headers.get("origin", "")
+    if origin_header:
+        hostname = _urlparse(origin_header).hostname or ""
+        if hostname in allowed:
+            return None
+
+    _logger_ts = logging.getLogger("lm-mcp-ai.transport")
+    _logger_ts.warning("Blocked request: host=%r origin=%r allowed=%r", host, origin_header, allowed)
+    return _Response(content="Forbidden: host not allowed", status_code=403)
+
+
+_ts.TransportSecurityMiddleware.validate_request = _validate_origin
 
 from mcp.server.fastmcp import FastMCP
 

@@ -2,10 +2,14 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import sql from '@/lib/db'
+import { requireAdmin } from '@/lib/require-session'
 
 type Params = { params: Promise<{ slug: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard.error
+
   const { slug } = await params
 
   const [skill] = await sql`SELECT * FROM skills WHERE slug = ${slug}`
@@ -28,6 +32,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard.error
+
   const { slug } = await params
   const body = await req.json()
 
@@ -54,6 +61,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard.error
+
   const { slug } = await params
   const result = await sql`DELETE FROM skills WHERE slug = ${slug}`
   if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })

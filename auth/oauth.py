@@ -380,11 +380,16 @@ async def oauth_token(request: Request) -> JSONResponse:
     if not user:
         return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
-    raw_token, _ = await create_token(user["id"], f"OAuth ({client_id[:20]})")
+    raw_token, _ = await create_token(
+        user["id"],
+        f"OAuth ({client_id[:20]})",
+        expires_days=config.TOKEN_TTL_DAYS,
+    )
 
     return JSONResponse({
         "access_token": raw_token,
         "token_type": "Bearer",
+        "expires_in": config.TOKEN_TTL_SECONDS,
         "scope": "mcp",
     })
 
