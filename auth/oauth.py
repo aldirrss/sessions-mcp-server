@@ -151,7 +151,7 @@ _PREAUTH_HTML = """<!DOCTYPE html>
   </div>
   <div class="scope-box">
     <strong>Permissions requested:</strong><br/>
-    Full MCP access (read + write sessions, skills, Docker management)
+    Full MCP access (read + write sessions, skills, config)
   </div>
   <form method="POST">
     <input type="hidden" name="client_id" value="{client_id}" />
@@ -187,7 +187,7 @@ _AUTHORIZE_HTML = """<!DOCTYPE html>
   {error_html}
   <div class="scope-box">
     <strong>Permissions requested:</strong><br/>
-    Full MCP access (read + write sessions, skills, Docker management)
+    Full MCP access (read + write sessions, skills, config)
   </div>
   <form method="POST" id="authForm">
     <input type="hidden" name="client_id" value="{client_id}" />
