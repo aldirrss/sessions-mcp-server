@@ -34,7 +34,6 @@ from mcp.server.fastmcp import FastMCP
 
 import db
 from auth.middleware import UserAuthMiddleware
-from tools.docker import register as register_docker
 from tools.sessions import register as register_sessions
 from tools.skills import register as register_skills
 from tools.github import register as register_github
@@ -59,7 +58,6 @@ _logger = logging.getLogger("lm-mcp-ai")
 # ---------------------------------------------------------------------------
 
 mcp = FastMCP("lm-mcp-ai")
-register_docker(mcp)
 register_sessions(mcp)
 register_skills(mcp)
 register_github(mcp)
