@@ -85,7 +85,7 @@ export default function UserLoginPage() {
 
           <p className="text-center text-xs text-gray-500">
             No account yet?{' '}
-            <Link href="/mcp-user/register" className="text-blue-600 hover:underline">Create one</Link>
+            <Link href="/panel/mcp-user/register" className="text-blue-600 hover:underline">Create one</Link>
           </p>
         </form>
       </div>

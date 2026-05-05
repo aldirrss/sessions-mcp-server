@@ -87,7 +87,7 @@ export default function SkillImportPage() {
   if (result) {
     return (
       <div className="max-w-xl space-y-6">
-        <Link href="/mcp-admin/skills" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
+        <Link href="/panel/mcp-admin/skills" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
           <ArrowLeft className="w-4 h-4" /> Skills
         </Link>
         <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center space-y-4">
@@ -104,7 +104,7 @@ export default function SkillImportPage() {
             <Globe className="w-4 h-4 text-green-600" /> All imported skills are marked as global
           </p>
           <div className="flex gap-3 pt-2">
-            <Link href="/mcp-admin/skills"
+            <Link href="/panel/mcp-admin/skills"
               className="flex-1 py-2.5 text-sm font-medium text-center bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
               View Skills
             </Link>
@@ -122,7 +122,7 @@ export default function SkillImportPage() {
     <div className="max-w-4xl space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/mcp-admin/skills" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
+          <Link href="/panel/mcp-admin/skills" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
             <ArrowLeft className="w-4 h-4" /> Skills
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Import Skills</h1>

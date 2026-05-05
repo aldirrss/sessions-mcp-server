@@ -107,11 +107,11 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Link href="/mcp-user/login"
+              <Link href="/panel/mcp-user/portal"
                 className="flex-1 text-center py-2.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
                 Go to Portal
               </Link>
-              <Link href="/mcp-admin/login"
+              <Link href="/panel/mcp-admin/login"
                 className="flex-1 text-center py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 Admin Panel
               </Link>
@@ -172,7 +172,7 @@ export default function RegisterPage() {
 
           <p className="text-center text-xs text-gray-500">
             Already have an account?{' '}
-            <Link href="/mcp-user/login" className="text-blue-600 hover:underline">Sign in</Link>
+            <Link href="/panel/mcp-user/login" className="text-blue-600 hover:underline">Sign in</Link>
           </p>
         </form>
       </div>
