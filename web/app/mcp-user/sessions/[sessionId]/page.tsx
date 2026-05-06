@@ -3,7 +3,7 @@
 import { use, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Pin, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Pin, Trash2, Plus, ChevronLeft, ChevronRight, Github, BookOpen } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
 import NoteCard from '@/components/note-card'
@@ -11,9 +11,11 @@ import NoteCard from '@/components/note-card'
 const NOTES_PER_PAGE = 10
 
 type Note = { id: number; content: string; source: string; pinned: boolean; created_at: string }
+type Skill = { skill_slug: string; name: string | null; category: string | null; used_at: string }
 type Session = {
   session_id: string; title: string; context: string; source: string
-  tags: string[]; pinned: boolean; archived: boolean; updated_at: string; notes: Note[]
+  tags: string[]; pinned: boolean; archived: boolean; updated_at: string
+  repo_url: string | null; notes: Note[]; skills: Skill[]
 }
 
 export default function PersonalSessionDetailPage({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -93,7 +95,7 @@ export default function PersonalSessionDetailPage({ params }: { params: Promise<
     <div className="min-h-screen bg-gray-50">
       <UserPortalHeader title={session.title} subtitle="Personal session" accentColor="bg-blue-600" />
 
-      <main className="max-w-3xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-4">
+      <main className="max-w-5xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-4">
         {/* Back + actions */}
         <div className="flex items-center justify-between">
           <Link href="/mcp-user/sessions" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
@@ -127,6 +129,41 @@ export default function PersonalSessionDetailPage({ params }: { params: Promise<
             <p className="text-xs text-gray-400 mt-2">Updated {new Date(session.updated_at).toLocaleString()}</p>
           </div>
         </div>
+
+        {/* GitHub Repository */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5 mb-2">
+            <Github className="w-4 h-4" /> GitHub Repository
+          </h2>
+          {session.repo_url ? (
+            <a href={session.repo_url} target="_blank" rel="noopener noreferrer"
+              className="text-sm text-blue-600 hover:underline break-all">
+              {session.repo_url}
+            </a>
+          ) : (
+            <p className="text-sm text-gray-400">No repository linked.</p>
+          )}
+        </div>
+
+        {/* Skills Used */}
+        {session.skills.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5">
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5 mb-3">
+              <BookOpen className="w-4 h-4" /> Skills Used
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {session.skills.map(s => (
+                <span key={s.skill_slug}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-medium">
+                  {s.name ?? s.skill_slug}
+                  {s.category && (
+                    <span className="text-purple-400">· {s.category}</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Context */}
         <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5">
