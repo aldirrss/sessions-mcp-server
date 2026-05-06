@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Key, BookOpen, Users, LogOut } from 'lucide-react'
+import { Key, BookOpen, Users, LogOut, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { API_BASE } from '@/lib/config'
 
 const NAV_ITEMS = [
   { href: '/mcp-user/portal', label: 'Tokens', icon: Key },
+  { href: '/mcp-user/sessions', label: 'Sessions', icon: MessageSquare },
   { href: '/mcp-user/skills', label: 'Skills', icon: BookOpen },
   { href: '/mcp-user/portal/teams', label: 'Teams', icon: Users },
 ]
