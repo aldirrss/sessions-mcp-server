@@ -48,11 +48,11 @@ Notes are stored separately and linked by `session_id`.
 
 ## Tools
 
-### Core CRUD
+### Personal Sessions
 
 #### `session_write`
-Create or overwrite a session context. Overwrites `context` and `title` but preserves
-existing notes.
+Create or overwrite a **personal** session context. Overwrites `context` and `title`
+but preserves existing notes. For team sessions use `session_team_write`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -61,7 +61,6 @@ existing notes.
 | `context` | string | yes | Full context (Markdown) |
 | `source` | string | no | `web` / `cli` / `vscode` (default: `web`) |
 | `tags` | string[] | no | Tags for filtering |
-| `team` | string | no | Team name slug — writes to team scope instead of personal |
 
 ---
 
@@ -78,14 +77,14 @@ order. Each note shows its ID as `[id:N]` for reference in `note_update`.
 ---
 
 #### `session_list`
-List all sessions (summary only — no context or notes).
+List **personal** sessions (summary only — no context or notes).
 Pinned sessions appear first. Archived sessions are hidden by default.
+For team sessions use `session_team_list`.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `tag` | string | no | — | Filter by tag |
 | `show_archived` | boolean | no | `false` | Include archived sessions |
-| `team` | string | no | — | Team name slug — lists team sessions instead of personal |
 
 ---
 
@@ -111,13 +110,56 @@ Permanently delete a session and all its notes.
 ---
 
 #### `session_search`
-Full-text search across session title, context, notes, and tags.
+Full-text search across **personal** session title, context, notes, and tags.
 Uses PostgreSQL `tsvector` for efficient full-text search with trigram fallback.
+For team sessions use `session_team_search`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | yes | Keyword to search |
-| `team` | string | no | Team name slug — searches team sessions instead of personal |
+
+Returns matching sessions with a content snippet and last-updated date.
+
+---
+
+### Team Sessions
+
+Use these tools when the session belongs to a team. The `team` parameter is **required**
+in all three tools. `session_read`, `session_append`, `session_delete`, and `session_update`
+work on team sessions too — they only need `session_id`.
+
+#### `session_team_write`
+Create or overwrite a session in a team namespace. All team members can read it.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_id` | string | yes | Unique session key, e.g. `sprint-42` |
+| `title` | string | yes | Short human-readable title |
+| `context` | string | yes | Full context (Markdown) |
+| `team` | string | yes | Team name slug, e.g. `mazuta-erp`. Must be a member. |
+| `source` | string | no | `web` / `cli` / `vscode` (default: `web`) |
+| `tags` | string[] | no | Tags for filtering |
+
+---
+
+#### `session_team_list`
+List sessions belonging to a team (summary only — no context or notes).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `team` | string | yes | — | Team name slug. Must be a member. |
+| `tag` | string | no | — | Filter by tag |
+| `show_archived` | boolean | no | `false` | Include archived sessions |
+
+---
+
+#### `session_team_search`
+Full-text search across a team's session title, context, notes, and tags.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Keyword to search |
+| `team` | string | yes | Team name slug to scope the search. Must be a member. |
 
 Returns matching sessions with a content snippet and last-updated date.
 
@@ -186,15 +228,19 @@ See [`tools/vacuum/README.md`](../vacuum/README.md) for full vacuum documentatio
 
 ```
 # Start of every conversation
-session_list()                          # see active sessions
-session_read("feat-auth-dev")           # restore context + pinned notes
+session_list()                              # see personal sessions
+session_team_list(team="mazuta-erp")        # see team sessions
+session_read("feat-auth-dev")               # restore context + pinned notes
 
 # During the conversation
 session_append("feat-auth-dev", "Completed token refresh logic. PR #12 created.")
 note_update(note_id=42, session_id="feat-auth-dev", action="pin")   # pin a critical decision
 
-# End of conversation with unfinished work
+# Save personal work at end of conversation
 session_write("feat-auth-dev", title="...", context="<updated context>")
+
+# Save team work at end of conversation
+session_team_write("sprint-42", title="...", context="...", team="mazuta-erp")
 
 # Protect a long-running session from being auto-archived
 session_update(session_id="feat-auth-dev", action="pin")
