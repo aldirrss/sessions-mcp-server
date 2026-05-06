@@ -1,14 +1,14 @@
 import nodemailer from 'nodemailer'
 
 function createTransport() {
-  const port = Number(process.env.SMTP_PORT ?? 587)
-  // Port 465 = SSL (secure: true). Port 587/25 = STARTTLS (secure: false).
-  // SMTP_SECURE env only overrides this when explicitly set to 'true' AND port is 465.
-  const secure = process.env.SMTP_SECURE === 'true' && port === 465
+  const port = Number(process.env.SMTP_HOST ? process.env.SMTP_PORT ?? 587 : 587)
+  // Port 465 = SSL. Port 587 = STARTTLS (requireTLS, not SSL).
+  const isSSL = port === 465
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST ?? 'localhost',
     port,
-    secure,
+    secure: isSSL,
+    requireTLS: !isSSL,
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
       : undefined,
@@ -16,8 +16,22 @@ function createTransport() {
 }
 
 // Fall back to SMTP_USER so Zoho doesn't reject mismatched sender
-const FROM = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'noreply@mcp.local'
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? ''
+function getFrom() {
+  return process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'noreply@mcp.local'
+}
+function getAdminEmail() {
+  return process.env.ADMIN_EMAIL ?? ''
+}
+
+async function send(opts: Parameters<ReturnType<typeof createTransport>['sendMail']>[0]) {
+  const transport = createTransport()
+  try {
+    await transport.sendMail(opts)
+  } catch (err) {
+    console.error('[email] Failed to send to', opts.to, '—', (err as Error).message)
+    throw err
+  }
+}
 
 export async function sendAdminTeamRequest(opts: {
   requesterUsername: string
@@ -26,10 +40,11 @@ export async function sendAdminTeamRequest(opts: {
   reason: string
   requestId: string
 }) {
-  if (!ADMIN_EMAIL) return
-  await createTransport().sendMail({
-    from: FROM,
-    to: ADMIN_EMAIL,
+  const to = getAdminEmail()
+  if (!to) { console.warn('[email] ADMIN_EMAIL not set, skipping team request notification'); return }
+  await send({
+    from: getFrom(),
+    to,
     subject: `[Sessions MCP] New team request: ${opts.teamName}`,
     text: [
       `User ${opts.requesterUsername} (${opts.requesterEmail}) has requested a new team.`,
@@ -48,8 +63,8 @@ export async function sendUserTeamApproved(opts: {
   username: string
   teamName: string
 }) {
-  await createTransport().sendMail({
-    from: FROM,
+  await send({
+    from: getFrom(),
     to: opts.toEmail,
     subject: `[Sessions MCP] Your team "${opts.teamName}" has been approved`,
     text: [
@@ -66,8 +81,8 @@ export async function sendUserTeamRejected(opts: {
   username: string
   teamName: string
 }) {
-  await createTransport().sendMail({
-    from: FROM,
+  await send({
+    from: getFrom(),
     to: opts.toEmail,
     subject: `[Sessions MCP] Your team request "${opts.teamName}" was not approved`,
     text: [
@@ -83,8 +98,8 @@ export async function sendUserEmailBlacklisted(opts: {
   toEmail: string
   reason?: string
 }) {
-  await createTransport().sendMail({
-    from: FROM,
+  await send({
+    from: getFrom(),
     to: opts.toEmail,
     subject: `[Sessions MCP] Your email has been blocked`,
     text: [
