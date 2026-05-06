@@ -18,7 +18,7 @@ function SkillCard({ skill }: { skill: Skill }) {
   async function toggle() {
     if (!open && content === null) {
       setLoading(true)
-      const res = await fetch(`${API_BASE}/api/skills/${skill.slug}`)
+      const res = await fetch(`${API_BASE}/skills/${skill.slug}`)
       const data = await res.json()
       setContent(data.content ?? '')
       setLoading(false)
@@ -68,7 +68,7 @@ export default function UserSkillsPage() {
 
   const fetchSkills = useCallback(async () => {
     const q = new URLSearchParams({ search })
-    const res = await fetch(`${API_BASE}/api/portal/skills?${q}`)
+    const res = await fetch(`${API_BASE}/portal/skills?${q}`)
     if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
     const data = await res.json()
     setSkills(data.skills ?? [])
@@ -82,7 +82,7 @@ export default function UserSkillsPage() {
   }, [fetchSkills])
 
   async function handleLogout() {
-    await fetch(`${API_BASE}/api/auth/user-logout`, { method: 'POST' })
+    await fetch(`${API_BASE}/auth/user-logout`, { method: 'POST' })
     window.location.href = '/panel/mcp-user/login'
   }
 

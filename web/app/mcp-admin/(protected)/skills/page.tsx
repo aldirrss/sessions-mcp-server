@@ -40,7 +40,7 @@ export default function SkillsPage() {
   const fetchSkills = useCallback(async () => {
     setLoading(true)
     const q = new URLSearchParams({ search, category, source, page: String(page) })
-    const res = await fetch(`${API_BASE}/api/skills?${q}`)
+    const res = await fetch(`${API_BASE}/skills?${q}`)
     const data = await res.json()
     setRows(data.rows)
     setTotal(data.total)
@@ -51,14 +51,14 @@ export default function SkillsPage() {
 
   async function handleDelete(slug: string) {
     if (!confirm(`Delete skill "${slug}"?`)) return
-    await fetch(`${API_BASE}/api/skills/${slug}`, { method: 'DELETE' })
+    await fetch(`${API_BASE}/skills/${slug}`, { method: 'DELETE' })
     fetchSkills()
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreating(true)
-    await fetch(`${API_BASE}/api/skills`, {
+    await fetch(`${API_BASE}/skills`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

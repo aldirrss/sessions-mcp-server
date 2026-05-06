@@ -32,7 +32,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   const [saving, setSaving] = useState(false)
 
   const fetchSession = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/sessions/${id}`)
+    const res = await fetch(`${API_BASE}/sessions/${id}`)
     if (!res.ok) { router.push("/mcp-admin/sessions"); return }
     const data = await res.json()
     setSession(data)
@@ -46,7 +46,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
   async function handleSave() {
     setSaving(true)
-    await fetch(`${API_BASE}/api/sessions/${id}`, {
+    await fetch(`${API_BASE}/sessions/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -61,13 +61,13 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
   async function handleDelete() {
     if (!confirm(`Delete session "${id}" and all its notes?`)) return
-    await fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' })
+    await fetch(`${API_BASE}/sessions/${id}`, { method: 'DELETE' })
     router.push("/mcp-admin/sessions")
   }
 
   async function handleSaveRepo() {
     setSavingRepo(true)
-    await fetch(`${API_BASE}/api/sessions/${id}`, {
+    await fetch(`${API_BASE}/sessions/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ repo_url: repoUrl.trim() || null }),
@@ -80,7 +80,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   async function handleUnlinkRepo() {
     if (!confirm('Remove repository link from this session?')) return
     setSavingRepo(true)
-    await fetch(`${API_BASE}/api/sessions/${id}`, {
+    await fetch(`${API_BASE}/sessions/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ repo_url: null }),
@@ -91,7 +91,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
   async function handleTogglePin() {
     if (!session) return
-    await fetch(`${API_BASE}/api/sessions/${id}`, {
+    await fetch(`${API_BASE}/sessions/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pinned: !session.pinned }),
@@ -103,7 +103,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
     if (!session) return
     const action = session.archived ? 'restore' : 'archive'
     if (!confirm(`${action === 'archive' ? 'Archive' : 'Restore'} session "${id}"?`)) return
-    await fetch(`${API_BASE}/api/sessions/${id}`, {
+    await fetch(`${API_BASE}/sessions/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ archived: !session.archived }),
@@ -113,7 +113,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
 
   async function handleToggleNotePin(noteId: number, currentPinned: boolean) {
     setTogglingNote(noteId)
-    await fetch(`${API_BASE}/api/sessions/${id}/notes/${noteId}`, {
+    await fetch(`${API_BASE}/sessions/${id}/notes/${noteId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pinned: !currentPinned }),
@@ -125,7 +125,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   async function handleAddNote(e: React.FormEvent) {
     e.preventDefault()
     setAddingNote(true)
-    await fetch(`${API_BASE}/api/sessions/${id}/notes`, {
+    await fetch(`${API_BASE}/sessions/${id}/notes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: noteContent, source: 'web' }),

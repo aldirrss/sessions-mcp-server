@@ -37,7 +37,7 @@ export default function SkillImportPage() {
 
     setPreviewing(true)
     setError('')
-    const res = await fetch(`${API_BASE}/api/skills/import`, {
+    const res = await fetch(`${API_BASE}/skills/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'preview', files: contents }),
@@ -73,7 +73,7 @@ export default function SkillImportPage() {
 
   async function handleImport() {
     setImporting(true)
-    const res = await fetch(`${API_BASE}/api/skills/import`, {
+    const res = await fetch(`${API_BASE}/skills/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'confirm', skills, selected: Array.from(selected) }),

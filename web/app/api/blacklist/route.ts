@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import sql from '@/lib/db'
 import { requireAdmin } from '@/lib/require-session'
 import { BlacklistEmailSchema } from '@/lib/schemas'
+import { sendUserEmailBlacklisted } from '@/lib/email'
 
 export async function GET() {
   const guard = await requireAdmin()
@@ -40,5 +41,6 @@ export async function POST(req: NextRequest) {
   if (!row) {
     return NextResponse.json({ error: 'Email already blacklisted' }, { status: 409 })
   }
+  sendUserEmailBlacklisted({ toEmail: row.email, reason: row.reason || undefined }).catch(() => {})
   return NextResponse.json(row, { status: 201 })
 }

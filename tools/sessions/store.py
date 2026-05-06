@@ -18,19 +18,33 @@ _logger = logging.getLogger("lm-mcp-ai.session")
 
 
 def _current_user_id() -> Optional[str]:
-    """Return UUID of the authenticated user, or None for admin/master-key access."""
     user = get_current_user()
     if user is None:
         return None
-    return user.get("id")  # None when authenticated via master key (admin)
+    return user.get("id")
+
+
+def _current_team_id() -> Optional[str]:
+    user = get_current_user()
+    if user is None:
+        return None
+    return user.get("team_id")
 
 
 async def _has_session_access(conn: asyncpg.Connection, session_id: str, user_id: Optional[str]) -> bool:
-    """Return True if user_id may read/write this session.
+    """Return True if the current caller may read/write this session.
 
-    Admin (user_id=None) always has access.
-    Regular users may access sessions they own or sessions with no owner (legacy).
+    - Admin (user_id=None, team_id=None): full access
+    - Team token (team_id set): access only to sessions in that team
+    - Regular user: access to own sessions (owner_id = user_id) or legacy unowned
     """
+    team_id = _current_team_id()
+    if team_id is not None:
+        result = await conn.fetchval(
+            "SELECT 1 FROM sessions WHERE session_id = $1 AND team_id = $2::uuid",
+            session_id, team_id,
+        )
+        return result is not None
     if user_id is None:
         return True
     result = await conn.fetchval(
@@ -38,9 +52,9 @@ async def _has_session_access(conn: asyncpg.Connection, session_id: str, user_id
         SELECT 1 FROM sessions
         WHERE session_id = $1
           AND (owner_id = $2::uuid OR owner_id IS NULL)
+          AND team_id IS NULL
         """,
-        session_id,
-        user_id,
+        session_id, user_id,
     )
     return result is not None
 
@@ -108,11 +122,12 @@ async def write_session(
     tags_val = tags or []
     user_id = _current_user_id()
 
+    team_id = _current_team_id()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO sessions (session_id, title, context, source, tags, owner_id)
-            VALUES ($1, $2, $3, $4, $5, $6::uuid)
+            INSERT INTO sessions (session_id, title, context, source, tags, owner_id, team_id)
+            VALUES ($1, $2, $3, $4, $5, $6::uuid, $7::uuid)
             ON CONFLICT (session_id) DO UPDATE
                 SET title    = EXCLUDED.title,
                     context  = EXCLUDED.context,
@@ -120,7 +135,7 @@ async def write_session(
                     tags     = EXCLUDED.tags
             RETURNING *
             """,
-            session_id, title, context, source, tags_val, user_id,
+            session_id, title, context, source, tags_val, user_id, team_id,
         )
         note_rows = await conn.fetch(
             "SELECT * FROM notes WHERE session_id = $1 ORDER BY created_at ASC",
@@ -311,9 +326,13 @@ async def list_sessions(tag: str | None = None, show_archived: bool = False) -> 
         if tag:
             args.append(tag)
             conditions.append(f"${len(args)} = ANY(s.tags)")
-        if user_id is not None:
+        team_id = _current_team_id()
+        if team_id is not None:
+            args.append(team_id)
+            conditions.append(f"s.team_id = ${len(args)}::uuid")
+        elif user_id is not None:
             args.append(user_id)
-            conditions.append(f"(s.owner_id = ${len(args)}::uuid OR s.owner_id IS NULL)")
+            conditions.append(f"(s.owner_id = ${len(args)}::uuid OR s.owner_id IS NULL) AND s.team_id IS NULL")
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         rows = await conn.fetch(base_query.format(where=where_clause), *args)
 
@@ -354,13 +373,19 @@ async def search_sessions(query: str) -> list[dict]:
     """
     pool = await db.get_pool()
     user_id = _current_user_id()
-    ownership_clause = (
-        "AND (s.owner_id = $3::uuid OR s.owner_id IS NULL)" if user_id is not None else ""
-    )
+    team_id = _current_team_id()
+    if team_id is not None:
+        scope_clause = "AND s.team_id = $3::uuid"
+    elif user_id is not None:
+        scope_clause = "AND (s.owner_id = $3::uuid OR s.owner_id IS NULL) AND s.team_id IS NULL"
+    else:
+        scope_clause = ""
 
     async with pool.acquire() as conn:
         args = [query, f"%{query}%"]
-        if user_id is not None:
+        if team_id is not None:
+            args.append(team_id)
+        elif user_id is not None:
             args.append(user_id)
         rows = await conn.fetch(
             f"""
@@ -382,7 +407,7 @@ async def search_sessions(query: str) -> list[dict]:
                 OR n.content ILIKE $2
                 OR $1 = ANY(s.tags)
             )
-            {ownership_clause}
+            {scope_clause}
             ORDER BY s.session_id, rank DESC, s.updated_at DESC
             """,
             *args,

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2, Github, BookOpen } from 'lucide-react'
+import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2, Github, BookOpen, Users } from 'lucide-react'
 import Link from 'next/link'
 
 import { API_BASE } from '@/lib/config'
@@ -29,7 +29,7 @@ export default function PortalPage() {
   const [githubSaving, setGithubSaving] = useState(false)
 
   const fetchTokens = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/portal/tokens`)
+    const res = await fetch(`${API_BASE}/portal/tokens`)
     if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
     const data = await res.json()
     setTokens(data.tokens ?? [])
@@ -37,7 +37,7 @@ export default function PortalPage() {
   }, [])
 
   const fetchGithubStatus = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/portal/github-token`)
+    const res = await fetch(`${API_BASE}/portal/github-token`)
     if (res.ok) { const d = await res.json(); setGithubHasToken(d.has_token) }
   }, [])
 
@@ -46,7 +46,7 @@ export default function PortalPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreating(true)
-    const res = await fetch(`${API_BASE}/api/portal/tokens`, {
+    const res = await fetch(`${API_BASE}/portal/tokens`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName, expires_days: newExpires ? Number(newExpires) : null }),
@@ -62,7 +62,7 @@ export default function PortalPage() {
   async function handleRevoke(id: string) {
     if (!confirm('Revoke this token? It will stop working immediately.')) return
     setRevoking(id)
-    await fetch(`${API_BASE}/api/portal/tokens/${id}`, { method: 'DELETE' })
+    await fetch(`${API_BASE}/portal/tokens/${id}`, { method: 'DELETE' })
     setRevoking(null)
     fetchTokens()
   }
@@ -74,14 +74,14 @@ export default function PortalPage() {
   }
 
   async function handleLogout() {
-    await fetch(`${API_BASE}/api/auth/user-logout`, { method: 'POST' })
+    await fetch(`${API_BASE}/auth/user-logout`, { method: 'POST' })
     window.location.href = '/panel/mcp-user/login'
   }
 
   async function handleSaveGithubToken() {
     if (!githubInput.trim()) return
     setGithubSaving(true)
-    await fetch(`${API_BASE}/api/portal/github-token`, {
+    await fetch(`${API_BASE}/portal/github-token`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: githubInput.trim() }),
@@ -94,7 +94,7 @@ export default function PortalPage() {
 
   async function handleRemoveGithubToken() {
     if (!confirm('Remove your GitHub token? GitHub tools will fall back to the server default.')) return
-    await fetch(`${API_BASE}/api/portal/github-token`, { method: 'DELETE' })
+    await fetch(`${API_BASE}/portal/github-token`, { method: 'DELETE' })
     setGithubHasToken(false)
   }
 
@@ -122,6 +122,10 @@ export default function PortalPage() {
             <Link href="/mcp-user/skills"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
               <BookOpen className="w-3.5 h-3.5" /> Skills
+            </Link>
+            <Link href="/mcp-user/portal/teams"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+              <Users className="w-3.5 h-3.5" /> Teams
             </Link>
           </nav>
         </div>

@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp status)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp log --oneline -3)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp add auth/oauth.py config.py docker-compose.yml server.py tools/sessions/store.py web/.env.example web/app/api/auth/login/route.ts web/app/api/auth/register/route.ts 'web/app/api/config/[key]/route.ts' web/app/api/config/route.ts web/app/api/portal/tokens/route.ts 'web/app/api/sessions/[id]/route.ts' web/app/api/sessions/route.ts 'web/app/api/skills/[slug]/route.ts' web/app/api/skills/route.ts 'web/app/api/users/[id]/route.ts' web/app/api/users/route.ts web/package.json web/package-lock.json 'web/app/mcp-admin/\\(protected\\)/error.tsx' 'web/app/mcp-admin/\\(protected\\)/loading.tsx' web/app/mcp-user/portal/error.tsx web/app/mcp-user/portal/loading.tsx web/lib/require-session.ts web/lib/schemas.ts)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp diff --cached --stat)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp commit -m ' *)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp push origin mcp-build)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp log main..mcp-build --oneline)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp log origin/main..mcp-build --oneline)",
+      "Bash(gh pr create --base main --head mcp-build --title 'fix: security audit — auth guards, bcrypt, transport security, OAuth TTL, user isolation, Zod' --body ' *)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp show 3dad009 --stat)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp add README.md)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp add .env.example)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp add docker-compose.yml README.md)",
+      "Bash(git -C /home/it-dev-mzt/project/python/lm-docker-mcp add docs/plans/2026-05-01-admin-web-design.md)",
+      "Bash(xargs sed *)",
+      "Bash(sed -i 's/<div className=\"max-w-5xl space-y-5\">/<div className=\"space-y-5\">/' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/sessions/page.tsx' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/users/page.tsx' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/skills/page.tsx')",
+      "Bash(sed -i 's/<div className=\"max-w-5xl space-y-6\">/<div className=\"space-y-6\">/' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/page.tsx')",
+      "Bash(sed -i 's/<div className=\"max-w-4xl space-y-5\">/<div className=\"space-y-5\">/' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/config/page.tsx')",
+      "Bash(sed -i 's/<div className=\"max-w-3xl space-y-6\">/<div className=\"max-w-5xl space-y-6\">/' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/sessions/[id]/page.tsx' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/skills/[slug]/page.tsx')",
+      "Bash(sed -i 's/<div className=\"max-w-xl space-y-6\">/<div className=\"space-y-6\">/' '/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-admin/\\(protected\\)/skills/import/page.tsx')",
+      "Bash(gh pr create --title 'Security hardening, admin panel improvements, email blacklist' --body ' *)",
+      "Bash(python3 -c 'import ast, sys *)"
+    ],
+    "additionalDirectories": [
+      "/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/api/blacklist",
+      "/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/api/admin/team-requests",
+      "/home/it-dev-mzt/project/python/lm-docker-mcp/web/app/mcp-user/teams"
+    ]
+  }
+}
