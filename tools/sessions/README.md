@@ -69,7 +69,7 @@ existing notes.
 Read the full context of a session, including all notes.
 
 Pinned notes appear first in a dedicated section. Regular notes follow in chronological
-order. Each note shows its ID as `[id:N]` for reference in `note_pin`.
+order. Each note shows its ID as `[id:N]` for reference in `note_update`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -125,100 +125,53 @@ Returns matching sessions with a content snippet and last-updated date.
 
 ### Note Management
 
-#### `note_pin`
-Pin a note so it always appears at the top of `session_read` output.
-Pinned notes are never deleted by `session_compact` or auto-vacuum.
-Use for critical decisions, blockers, or constraints.
+#### `note_update`
+Pin or unpin a note.
+
+Pinned notes always appear at the top of `session_read` output and are never deleted
+by auto-vacuum. Use `pin` for critical decisions, blockers, or constraints.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `note_id` | integer | yes | Note ID (shown as `[id:N]` in session_read) |
 | `session_id` | string | yes | Session ID the note belongs to |
-
----
-
-#### `note_unpin`
-Remove the pin from a note, returning it to chronological order.
-After unpinning, the note becomes eligible for `session_compact` and auto-vacuum.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `note_id` | integer | yes | Note ID to unpin |
-| `session_id` | string | yes | Session ID the note belongs to |
-
----
-
-#### `session_compact`
-Merge old unpinned notes into the session context field and delete them.
-
-Appends a `## Compacted Notes (before YYYY-MM-DD)` section to the context, then
-deletes those notes from the `notes` table. Keeps the session lean. Pinned notes
-are never compacted.
-
-Use this when `session_read` output is becoming too long to fit in context.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `session_id` | string | yes | — | Session to compact |
-| `before_days` | integer | no | `30` | Compact notes older than N days |
+| `action` | string | yes | `pin` or `unpin` |
 
 ---
 
 ### Session Lifecycle
 
-#### `session_pin`
-Pin a session to protect it from auto-vacuum (archive and delete).
-Pinned sessions are excluded from all vacuum operations regardless of age.
+#### `session_update`
+Change the lifecycle state of a session.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `session_id` | string | yes | Session ID to pin |
+| `session_id` | string | yes | Session ID to update |
+| `action` | string | yes | One of `pin`, `unpin`, `archive`, `restore` |
 
----
+| Action | Effect |
+|--------|--------|
+| `pin` | Protect from auto-vacuum indefinitely |
+| `unpin` | Remove protection; session becomes eligible for auto-vacuum again |
+| `archive` | Soft-delete (hidden from list; recoverable with `restore`) |
+| `restore` | Un-archive a previously archived session |
 
-#### `session_unpin`
-Remove the pin from a session, making it eligible for auto-vacuum again.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `session_id` | string | yes | Session ID to unpin |
-
----
-
-#### `session_archive`
-Soft-delete a session by marking it `archived = true`.
-
-Archived sessions are hidden from `session_list` by default but can be recovered with
-`session_restore`. Auto-vacuum permanently deletes archived sessions after
-`vacuum_sessions_days` (default 180 days).
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `session_id` | string | yes | Session ID to archive |
-
----
-
-#### `session_restore`
-Restore an archived session, setting `archived = false`.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `session_id` | string | yes | Session ID to restore |
+Archived sessions are permanently deleted after `vacuum_sessions_days` (default 180 days)
+unless restored first.
 
 ---
 
 ## Session Lifecycle Flow
 
 ```
-session_write          ← create / overwrite context
+session_write            ← create / overwrite context
     │
-    ├── session_append ← log notes mid-conversation
-    ├── note_pin       ← pin critical notes (never vacuumed)
-    ├── session_compact← merge old notes into context when session is long
+    ├── session_append   ← log notes mid-conversation
+    ├── note_update(pin) ← pin critical notes (never vacuumed)
     │
-    ├── session_pin    ← protect from auto-vacuum forever
-    ├── session_archive← soft-delete (recoverable via session_restore)
-    └── session_delete ← hard-delete immediately
+    ├── session_update(pin)     ← protect from auto-vacuum forever
+    ├── session_update(archive) ← soft-delete (recoverable via restore)
+    └── session_delete          ← hard-delete immediately
 ```
 
 Auto-vacuum runs daily:
@@ -238,11 +191,11 @@ session_read("feat-auth-dev")           # restore context + pinned notes
 
 # During the conversation
 session_append("feat-auth-dev", "Completed token refresh logic. PR #12 created.")
-note_pin(note_id=42, session_id="feat-auth-dev")   # pin a critical decision
+note_update(note_id=42, session_id="feat-auth-dev", action="pin")   # pin a critical decision
 
 # End of conversation with unfinished work
 session_write("feat-auth-dev", title="...", context="<updated context>")
 
-# When session is getting long
-session_compact("feat-auth-dev", before_days=7)
+# Protect a long-running session from being auto-archived
+session_update(session_id="feat-auth-dev", action="pin")
 ```

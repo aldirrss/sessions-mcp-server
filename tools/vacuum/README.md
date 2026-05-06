@@ -4,37 +4,8 @@ Auto-vacuum — clean up old notes and archive/hard-delete inactive sessions on 
 configurable schedule.
 
 The vacuum job runs automatically once per day (via an `asyncio` background task started
-in server lifespan). It can also be triggered on demand with `vacuum_run`.
-
----
-
-## Tools
-
-#### `vacuum_run`
-Clean up old notes and archive/delete inactive sessions.
-
-Always run with `dry_run=true` first to preview candidates before committing changes.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `dry_run` | boolean | no | `false` | Preview mode — shows candidates without making changes |
-
-**Preview first:**
-```
-vacuum_run(dry_run=true)
-```
-
-**Execute:**
-```
-vacuum_run(dry_run=false)
-```
-
-**Output includes:**
-- Settings used (notes_days, sessions_days, enabled)
-- Count of notes deleted
-- Count of sessions archived
-- Count of sessions hard-deleted
-- List of session candidates (IDs, titles, last active date)
+in server lifespan). There is no MCP tool to trigger it manually — use `config_write`
+to enable or tune the schedule.
 
 ---
 
@@ -62,8 +33,8 @@ An already-archived session is permanently deleted when:
 - `archived = true`
 - `updated_at < NOW() - vacuum_sessions_days days`
 
-This two-phase approach gives you time to call `session_restore` before a session is
-permanently destroyed.
+This two-phase approach gives you time to call `session_update(action="restore")` before
+a session is permanently destroyed.
 
 ---
 
@@ -101,9 +72,9 @@ Individual sessions and notes can be excluded from all vacuum operations:
 
 | Method | Effect |
 |--------|--------|
-| `session_pin(session_id)` | Session excluded from all vacuum phases forever |
+| `session_update(session_id, action="pin")` | Session excluded from all vacuum phases forever |
 | Add tag `keep` to a session | Session excluded from the archive phase |
-| `note_pin(note_id, session_id)` | Note excluded from deletion |
+| `note_update(note_id, session_id, action="pin")` | Note excluded from deletion |
 
 ---
 
@@ -120,5 +91,4 @@ async def _daily_vacuum_loop():
 ```
 
 The loop fires after a 24-hour delay on first run (not at startup), so a fresh
-deployment will not immediately vacuum. Use `vacuum_run(dry_run=false)` for an
-immediate manual run.
+deployment will not immediately vacuum.
