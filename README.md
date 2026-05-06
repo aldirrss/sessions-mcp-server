@@ -1,4 +1,4 @@
-# lm-mcp-ai
+# Sessions MCP Server
 
 A self-hosted **MCP (Model Context Protocol) server** running in Docker on a VPS.
 Connects **claude.ai Web**, **Claude Code CLI**, and **VSCode** to a shared backend —
@@ -19,8 +19,9 @@ configuration, and automated data retention, all backed by PostgreSQL.
 8. [URL Structure](#url-structure)
 9. [Tools Reference](#tools-reference)
 10. [Web Panel](#web-panel)
-11. [Auto-Vacuum](#auto-vacuum)
-12. [Security](#security)
+11. [Teams](#teams)
+12. [Auto-Vacuum](#auto-vacuum)
+13. [Security](#security)
 
 ---
 
@@ -41,7 +42,7 @@ configuration, and automated data retention, all backed by PostgreSQL.
 │          ┌───────────────┴──────────────────────┐               │
 │          ▼  :8765                                ▼  :3100        │
 │  ┌───────────────────────────┐  ┌───────────────────────────┐   │
-│  │  lema-mcp-ai (FastMCP)     │  │  lema-mcp-web (Next.js 15) │   │
+│  │  sessions-mcp (FastMCP)   │  │  lema-mcp-web (Next.js 15) │   │
 │  │  /mcp  /oauth/*           │  │  /panel/mcp-admin/*       │   │
 │  │  /.well-known/*           │  │  /panel/mcp-user/*        │   │
 │  └──────────────┬────────────┘  └──────────────┬────────────┘   │
@@ -51,6 +52,7 @@ configuration, and automated data retention, all backed by PostgreSQL.
 │  │  PostgreSQL 15  (127.0.0.1:15432)                       │    │
 │  │  sessions · notes · skills · skill_versions             │    │
 │  │  session_skills · config · users · user_tokens          │    │
+│  │  teams · team_members · team_invites · team_requests    │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -60,7 +62,7 @@ configuration, and automated data retention, all backed by PostgreSQL.
 | Container | Image | Port (loopback) | Purpose |
 |-----------|-------|-----------------|---------|
 | `lema-mcp-postgres` | `postgres:15` | `127.0.0.1:15432` | Database |
-| `lema-mcp-ai` | custom (Python) | `127.0.0.1:8765` | MCP server + OAuth AS |
+| `sessions-mcp` | custom (Python) | `127.0.0.1:8765` | MCP server + OAuth AS |
 | `lema-mcp-web` | custom (Next.js) | `127.0.0.1:3100` | Web panel |
 
 ---
@@ -92,8 +94,8 @@ sudo usermod -aG docker $USER && newgrp docker
 ### 2. Clone the repository
 
 ```bash
-git clone https://github.com/aldirrss/sessions-mcp-server.git /opt/lm-mcp-ai
-cd /opt/lm-mcp-ai
+git clone https://github.com/aldirrss/sessions-mcp-server.git /opt/sessions-mcp
+cd /opt/sessions-mcp
 ```
 
 ### 3. Configure environment
@@ -124,7 +126,7 @@ docker compose up -d --build
 docker compose ps
 # Expected:
 #   lema-mcp-postgres   Up (healthy)
-#   lema-mcp-ai         Up
+#   sessions-mcp        Up
 #   lema-mcp-web        Up
 ```
 
@@ -141,8 +143,7 @@ docker compose ps
 | `MCP_API_KEY` | — | — | Master key fallback for Bearer auth (admin access) |
 | `MCP_HOST` | — | `0.0.0.0` | Bind address inside the container |
 | `MCP_PORT` | — | `8765` | Port inside the container |
-| `MCP_EXTERNAL_HOST` | — | — | External hostname (derived from `MCP_EXTERNAL_URL` if unset) |
-| `MCP_ALLOWED_ORIGINS` | — | — | Comma-separated extra hostnames allowed by transport security (in addition to `MCP_EXTERNAL_URL` hostname, `localhost`, and `127.0.0.1`) |
+| `MCP_ALLOWED_ORIGINS` | — | — | Comma-separated extra hostnames allowed by transport security |
 | `TOKEN_TTL_DAYS` | — | `30` | OAuth access token lifetime in days |
 | `GITHUB_TOKEN` | — | — | Fallback GitHub PAT when a user has no personal token set |
 
@@ -154,6 +155,12 @@ docker compose ps
 | `SESSION_SECRET` | ✅ | — | Cookie encryption key, minimum 32 characters |
 | `ADMIN_USER` | ✅ | — | Admin username for the web panel |
 | `ADMIN_PASSWORD_HASH` | ✅ | — | bcrypt hash of the admin password. Generate with: `node -e "require('bcryptjs').hash('yourpass', 12).then(console.log)"` |
+| `SMTP_HOST` | — | — | SMTP server hostname for email notifications |
+| `SMTP_PORT` | — | `587` | SMTP port (`587` = STARTTLS, `465` = SSL) |
+| `SMTP_USER` | — | — | SMTP username |
+| `SMTP_PASS` | — | — | SMTP password |
+| `SMTP_FROM` | — | `SMTP_USER` | Sender address (defaults to `SMTP_USER` if unset) |
+| `ADMIN_EMAIL` | — | — | Admin email for team request notifications |
 
 ### PostgreSQL (bundled container)
 
@@ -222,7 +229,9 @@ Fill in **username** (lowercase, 3–50 chars), **email**, and **password** (min
 
 After registration, your first PAT is displayed **once** — copy it immediately.
 
-> This token cannot be retrieved again. If lost, log in to the portal and create a new one.
+> This token cannot be retrieved again. If lost, log in to the portal, revoke the old
+> token, and create a new one. The first 8 characters of each token are shown in the
+> portal as a reminder (`abc12345••••••••`).
 
 ### Step 3 — Connect a client
 
@@ -263,7 +272,7 @@ Tokens are stored as SHA-256 hashes and sent as `Authorization: Bearer <token>`.
 ### Claude Code CLI
 
 ```bash
-claude mcp add --transport http --scope user mcp-lema \
+claude mcp add --transport http --scope user sessions-mcp \
   https://mcp.example.com/mcp \
   --header "Authorization: Bearer YOUR_TOKEN"
 ```
@@ -275,7 +284,7 @@ Create `.vscode/mcp.json` in your project:
 ```json
 {
   "servers": {
-    "mcp-lema": {
+    "sessions-mcp": {
       "type": "http",
       "url": "https://mcp.example.com/mcp",
       "headers": { "Authorization": "Bearer YOUR_TOKEN" }
@@ -308,7 +317,9 @@ curl -s -X POST "https://mcp.example.com/mcp" \
 | `https://mcp.example.com/panel/mcp-user/login` | User login |
 | `https://mcp.example.com/panel/mcp-user/register` | User registration |
 | `https://mcp.example.com/panel/mcp-user/portal` | Token management |
+| `https://mcp.example.com/panel/mcp-user/sessions` | Personal sessions |
 | `https://mcp.example.com/panel/mcp-user/skills` | Global skills browser |
+| `https://mcp.example.com/panel/mcp-user/portal/teams` | Team management |
 | `https://mcp.example.com/panel/mcp-admin/login` | Admin login |
 | `https://mcp.example.com/panel/mcp-admin` | Admin dashboard |
 
@@ -336,8 +347,17 @@ Tools are grouped into 6 categories.
 | `note_pin` | write | Pin a note (always visible, never vacuumed) |
 | `note_unpin` | write | Unpin a note |
 
-> **User isolation:** each authenticated user only sees their own sessions.
-> Sessions created before isolation was introduced (no `owner_id`) remain visible to all users.
+**Team sessions:** pass `team="team-name"` to `session_write`, `session_list`, and
+`session_search` to scope the operation to a team namespace. The user must be a member
+of the team. Without `team`, operations apply to personal sessions only.
+
+```
+session_write(session_id="feat-auth", title="...", context="...", team="my-team")
+session_list(team="my-team")
+```
+
+> **User isolation:** each authenticated user sees only their own personal sessions.
+> Team sessions are visible to all members of that team.
 > Admin access (master key) bypasses isolation and sees all sessions.
 
 ### Skills (11 tools)
@@ -401,8 +421,6 @@ The web panel has two sections served under `/panel`.
 
 Full management interface for sessions, skills, config, and users.
 Login requires `ADMIN_USER` + `ADMIN_PASSWORD_HASH` credentials.
-All admin API routes are protected by a server-side session guard — unauthenticated
-requests return `401 Unauthorized`.
 
 | Page | Path | Description |
 |------|------|-------------|
@@ -413,6 +431,8 @@ requests return `401 Unauthorized`.
 | Skill Import | `/panel/mcp-admin/skills/import` | Drag & drop `.md` files, preview before confirm |
 | Users | `/panel/mcp-admin/users` | List users, promote/demote, activate/deactivate |
 | Config | `/panel/mcp-admin/config` | CRUD for config key-value store |
+| Team Requests | `/panel/mcp-admin/team-requests` | Approve or reject team creation requests |
+| Email Blacklist | `/panel/mcp-admin/blacklist` | Block specific email addresses from registering |
 
 ### User Portal (`/panel/mcp-user/*`)
 
@@ -423,7 +443,39 @@ Self-service interface for registered users.
 | Login | `/panel/mcp-user/login` | User login |
 | Register | `/panel/mcp-user/register` | User registration |
 | Portal | `/panel/mcp-user/portal` | Create, list, and revoke personal access tokens; set GitHub PAT |
+| Sessions | `/panel/mcp-user/sessions` | Personal session list |
+| Session Detail | `/panel/mcp-user/sessions/:id` | Full context, notes, pin/delete/append |
 | Skills | `/panel/mcp-user/skills` | Browse global skills |
+| Skill Detail | `/panel/mcp-user/skills/:slug` | Full skill content (read-only) |
+| Teams | `/panel/mcp-user/portal/teams` | Request team creation, view membership |
+| Team Management | `/panel/mcp-user/teams/:teamId` | Manage sessions, members, skills for a team |
+
+---
+
+## Teams
+
+Teams let multiple users share a session namespace. Each team has members (admin or member role).
+
+### Creating a team
+
+Users request a team from the portal. An admin approves or rejects the request via the admin panel.
+
+- A user can be **admin of at most one team** but can join multiple teams as a member.
+- If a request is rejected, the user may submit a new request.
+
+### Joining a team
+
+Team admins can add members directly by username, or generate a **single-use invite link** (7-day expiry). Unauthenticated users who follow an invite link are redirected to login first, then returned to the invite page automatically.
+
+### Team sessions
+
+Write to a team namespace by passing `team="team-name"` in MCP tool calls:
+
+```
+session_write(session_id="sprint-42", title="...", context="...", team="my-team")
+```
+
+All team members can read team sessions. Only team admins can delete them.
 
 ---
 
@@ -467,18 +519,19 @@ vacuum_run(dry_run=false)   # execute
 | Measure | Detail |
 |---------|--------|
 | OAuth 2.0 AS (PKCE S256) | Standard authorization code flow for VSCode, CLI, and claude.ai |
-| OAuth token TTL | Access tokens expire after `TOKEN_TTL_DAYS` days (default 30); `expires_in` included in token response (RFC 6749) |
-| Per-user Bearer tokens (PAT) | Stored as SHA-256 hash; never logged or returned after creation |
-| Admin password hashing | Admin login uses bcrypt (`ADMIN_PASSWORD_HASH`); plain-text passwords not accepted |
+| OAuth token TTL | Access tokens expire after `TOKEN_TTL_DAYS` days (default 30) |
+| Per-user Bearer tokens (PAT) | Stored as SHA-256 hash; first 8 chars stored as display prefix; never logged after creation |
+| Admin password hashing | Admin login uses bcrypt (`ADMIN_PASSWORD_HASH`) |
 | Admin login rate limiting | Max 5 failed attempts per IP per 15 minutes; returns `429 Too Many Requests` |
-| Admin API auth guard | All `/api/*` admin routes require a valid admin session; unauthenticated requests return `401` |
-| Transport security | MCP `Host`/`Origin` headers validated against an allowlist derived from `MCP_EXTERNAL_URL` (+ optional `MCP_ALLOWED_ORIGINS`); unknown hosts return `403` |
-| User isolation | Sessions are scoped to `owner_id`; users cannot read or modify each other's sessions |
-| Input validation | All API route inputs validated with Zod schemas (login, register, token creation, user management) |
+| Admin API auth guard | All `/api/*` admin routes require a valid admin session |
+| Transport security | MCP `Host`/`Origin` headers validated against allowlist derived from `MCP_EXTERNAL_URL` |
+| User isolation | Personal sessions scoped to `owner_id`; team sessions scoped to `team_id` with membership check |
+| Team constraints | One admin team per user (DB unique partial index); one pending request at a time |
+| Email blacklist | Specific email addresses can be blocked from registering |
+| Input validation | All API inputs validated with Zod (web) and Pydantic (MCP tools) |
 | Roles | `user` (portal access) and `admin` (full panel); enforced on all routes |
 | Master key fallback | `MCP_API_KEY` env var accepted as admin Bearer token for emergency access |
 | Non-root container | MCP process runs as `mcpuser` (UID 1000) |
 | Loopback binding | Ports 8765, 3100, and 15432 bound to `127.0.0.1` — not internet-exposed |
 | No shell injection | All subprocess calls use `asyncio.create_subprocess_exec` — no `shell=True` |
-| Pydantic validation | All MCP tool inputs validated with type checks, regex, and length limits |
-| Web session cookie | `lm-session` encrypted via `iron-session`; 8-hour expiry; `httpOnly`, `SameSite=lax`, `Secure` in production |
+| Web session cookie | Encrypted via `iron-session`; 8-hour expiry; `httpOnly`, `SameSite=lax`, `Secure` in production |
