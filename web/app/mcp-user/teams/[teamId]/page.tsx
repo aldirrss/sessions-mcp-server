@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, use } from 'react'
-import { Users, Key, BookOpen, MessageSquare, Trash2, Plus, Copy, Check } from 'lucide-react'
+import { Users, Key, BookOpen, MessageSquare, Trash2, Plus, Copy, Check, Link2, Clock } from 'lucide-react'
 import UserPortalHeader from '@/components/user-portal-header'
 
 type Tab = 'sessions' | 'members' | 'tokens' | 'skills'
@@ -9,6 +9,7 @@ type Member = { id: string; username: string; email: string; role: string; joine
 type Token  = { id: string; name: string; revoked: boolean; created_at: string }
 type Session = { session_id: string; title: string; notes_count: number; updated_at: string }
 type Skill   = { slug: string; name: string; summary: string }
+type Invite  = { token: string; expires_at: string; created_at: string; used_at: string | null; used_by_username: string | null }
 
 export default function TeamAdminPage({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = use(params)
@@ -19,8 +20,10 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
   const [tokens, setTokens] = useState<Token[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
   const [newToken, setNewToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copiedInvite, setCopiedInvite] = useState<string | null>(null)
   const [addUsername, setAddUsername] = useState('')
   const [addSkugSlug, setAddSkillSlug] = useState('')
   const [error, setError] = useState('')
@@ -37,10 +40,11 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
   const fetchTokens   = useCallback(async () => { const r = await fetch(`${API}/tokens`);   if (r.ok) setTokens(await r.json()) }, [API])
   const fetchSessions = useCallback(async () => { const r = await fetch(`${API}/sessions`); if (r.ok) setSessions(await r.json()) }, [API])
   const fetchSkills   = useCallback(async () => { const r = await fetch(`${API}/skills`);   if (r.ok) setSkills(await r.json()) }, [API])
+  const fetchInvites  = useCallback(async () => { const r = await fetch(`${API}/invites`);  if (r.ok) setInvites(await r.json()) }, [API])
 
   useEffect(() => {
-    fetchTeam(); fetchSessions(); fetchMembers(); fetchTokens(); fetchSkills()
-  }, [fetchTeam, fetchSessions, fetchMembers, fetchTokens, fetchSkills])
+    fetchTeam(); fetchSessions(); fetchMembers(); fetchTokens(); fetchSkills(); fetchInvites()
+  }, [fetchTeam, fetchSessions, fetchMembers, fetchTokens, fetchSkills, fetchInvites])
 
   async function createToken() {
     const name = prompt('Token name:')
@@ -95,6 +99,31 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 
+  async function createInvite() {
+    const res = await fetch(`${API}/invites`, { method: 'POST' })
+    const data = await res.json()
+    if (res.ok) {
+      const link = `${window.location.origin}/panel/mcp-user/invite/${data.token}`
+      await navigator.clipboard.writeText(link)
+      setCopiedInvite(data.token)
+      setTimeout(() => setCopiedInvite(null), 3000)
+      fetchInvites()
+    }
+  }
+
+  async function revokeInvite(token: string) {
+    if (!confirm('Revoke this invite link?')) return
+    await fetch(`${API}/invites/${token}`, { method: 'DELETE' })
+    fetchInvites()
+  }
+
+  async function copyInviteLink(token: string) {
+    const link = `${window.location.origin}/panel/mcp-user/invite/${token}`
+    await navigator.clipboard.writeText(link)
+    setCopiedInvite(token)
+    setTimeout(() => setCopiedInvite(null), 2000)
+  }
+
   const isAdmin = role === 'admin'
   const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'sessions', label: 'Sessions', icon: <MessageSquare className="w-3.5 h-3.5" /> },
@@ -129,14 +158,11 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
 
         {/* Team tab card */}
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          {/* Tab bar */}
           <div className="flex overflow-x-auto scrollbar-none border-b border-gray-100">
             {TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors flex-shrink-0 -mb-px ${
-                  tab === t.key
-                    ? 'border-blue-600 text-blue-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-900'
+                  tab === t.key ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'
                 }`}>
                 {t.icon}{t.label}
               </button>
@@ -185,15 +211,55 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
           {tab === 'members' && (
             <div>
               {isAdmin && (
-                <form onSubmit={addMember} className="flex gap-2 p-4 border-b border-gray-100">
-                  <input type="text" value={addUsername} onChange={e => setAddUsername(e.target.value)} required
-                    placeholder="Add member by username"
-                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <button type="submit" className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex-shrink-0">
-                    <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add</span>
+                <div className="p-4 border-b border-gray-100 space-y-3">
+                  {/* Add by username */}
+                  <form onSubmit={addMember} className="flex gap-2">
+                    <input type="text" value={addUsername} onChange={e => setAddUsername(e.target.value)} required
+                      placeholder="Add member by username"
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button type="submit" className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex-shrink-0">
+                      <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add</span>
+                    </button>
+                  </form>
+                  {/* Invite via link */}
+                  <button onClick={createInvite}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors w-full sm:w-auto">
+                    <Link2 className="w-4 h-4" />
+                    {copiedInvite ? 'Link copied!' : 'Create invite link'}
                   </button>
-                </form>
+                </div>
               )}
+
+              {/* Active invite links (admin only) */}
+              {isAdmin && invites.filter(i => !i.used_at && new Date(i.expires_at) > new Date()).length > 0 && (
+                <div className="px-4 py-3 bg-blue-50 border-b border-gray-100">
+                  <p className="text-xs font-semibold text-blue-700 mb-2">Active invite links</p>
+                  <div className="space-y-2">
+                    {invites.filter(i => !i.used_at && new Date(i.expires_at) > new Date()).map(inv => (
+                      <div key={inv.token} className="flex items-center gap-2">
+                        <code className="flex-1 text-xs font-mono text-gray-600 bg-white border border-gray-200 px-2 py-1.5 rounded-lg truncate">
+                          {window.location.origin}/panel/mcp-user/invite/{inv.token}
+                        </code>
+                        <button onClick={() => copyInviteLink(inv.token)}
+                          className="flex-shrink-0 p-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                          title="Copy link">
+                          {copiedInvite === inv.token ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5 text-gray-500" />}
+                        </button>
+                        <button onClick={() => revokeInvite(inv.token)}
+                          className="flex-shrink-0 p-1.5 rounded-md border border-gray-200 bg-white hover:bg-red-50 hover:text-red-600 transition-colors"
+                          title="Revoke">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-400">
+                          <Clock className="w-3 h-3" />
+                          {new Date(inv.expires_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {members.length === 0 ? (
                 <div className="p-8 text-center text-sm text-gray-400">No members yet.</div>
               ) : (

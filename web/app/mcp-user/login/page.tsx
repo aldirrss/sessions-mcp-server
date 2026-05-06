@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { LogIn } from 'lucide-react'
 
@@ -10,6 +10,12 @@ export default function UserLoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [next, setNext] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setNext(params.get('next') ?? '')
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -23,7 +29,7 @@ export default function UserLoginPage() {
       body: JSON.stringify({ username: identifier, password }),
     })
     if (res.ok) {
-      window.location.href = '/panel/mcp-user/portal'
+      window.location.href = next ? `/panel${next}` : '/panel/mcp-user/portal'
     } else {
       const data = await res.json()
       setError(data.error ?? 'Invalid credentials')
@@ -39,7 +45,9 @@ export default function UserLoginPage() {
             <LogIn className="w-6 h-6 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Sign In</h1>
-          <p className="text-sm text-gray-500 mt-1">Access your MCP portal</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {next ? 'Sign in to continue' : 'Access your MCP portal'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
@@ -85,7 +93,7 @@ export default function UserLoginPage() {
 
           <p className="text-center text-xs text-gray-500">
             No account yet?{' '}
-            <Link href="/mcp-user/register" className="text-blue-600 hover:underline">Create one</Link>
+            <Link href={next ? `/mcp-user/register?next=${next}` : '/mcp-user/register'} className="text-blue-600 hover:underline">Create one</Link>
           </p>
         </form>
       </div>

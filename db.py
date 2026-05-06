@@ -349,6 +349,21 @@ _DDL_STEPS = [
     """,
     "CREATE INDEX IF NOT EXISTS idx_email_blacklist_email ON email_blacklist (email)",
 
+    # Team invites — single-use links, expires after 7 days or when claimed
+    """
+    CREATE TABLE IF NOT EXISTS team_invites (
+        token       TEXT        PRIMARY KEY,
+        team_id     UUID        NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        created_by  UUID        NOT NULL REFERENCES users(id),
+        used_by     UUID        REFERENCES users(id),
+        used_at     TIMESTAMPTZ,
+        expires_at  TIMESTAMPTZ NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_team_invites_team    ON team_invites (team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_team_invites_token   ON team_invites (token)",
+
     # -----------------------------------------------------------------------
     # Skills library
     # -----------------------------------------------------------------------
