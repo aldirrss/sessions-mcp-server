@@ -106,14 +106,10 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="pt-2">
               <Link href="/mcp-user/portal"
-                className="flex-1 text-center py-2.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                className="block w-full text-center py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
                 Go to Portal
-              </Link>
-              <Link href="/mcp-admin/login"
-                className="flex-1 text-center py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                Admin Panel
               </Link>
             </div>
           </div>
