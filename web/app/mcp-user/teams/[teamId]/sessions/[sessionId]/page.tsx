@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, Pin, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
+import NoteCard from '@/components/note-card'
 
 const NOTES_PER_PAGE = 10
 
@@ -145,10 +146,7 @@ export default function TeamSessionDetailPage({ params }: { params: Promise<{ te
             </h2>
             <div className="space-y-2">
               {pinnedNotes.map(n => (
-                <div key={n.id} className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap">{n.content}</p>
-                  <p className="text-xs text-gray-400 mt-1.5">{n.source} · {new Date(n.created_at).toLocaleString()}</p>
-                </div>
+                <NoteCard key={n.id} {...n} pinned />
               ))}
             </div>
           </div>
@@ -166,10 +164,7 @@ export default function TeamSessionDetailPage({ params }: { params: Promise<{ te
             <>
               <div className="space-y-2">
                 {paginatedNotes.map(n => (
-                  <div key={n.id} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{n.content}</p>
-                    <p className="text-xs text-gray-400 mt-1.5">{n.source} · {new Date(n.created_at).toLocaleString()}</p>
-                  </div>
+                  <NoteCard key={n.id} {...n} />
                 ))}
               </div>
               {totalPages > 1 && (
