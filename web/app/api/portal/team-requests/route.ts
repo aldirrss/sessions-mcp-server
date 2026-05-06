@@ -18,15 +18,26 @@ export async function GET() {
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
   if (!session.userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const rows = await sql`
-    SELECT tr.id, tr.team_name, tr.reason, tr.status, tr.created_at, tr.reviewed_at,
-           t.id AS team_id
-    FROM team_requests tr
-    LEFT JOIN teams t ON t.name = tr.team_name
-    WHERE tr.requested_by = ${session.userId}::uuid
-    ORDER BY tr.created_at DESC
-  `
-  return NextResponse.json(rows)
+  const [requests, adminTeamRows] = await Promise.all([
+    sql`
+      SELECT tr.id, tr.team_name, tr.reason, tr.status, tr.created_at, tr.reviewed_at,
+             t.id AS team_id
+      FROM team_requests tr
+      LEFT JOIN teams t ON t.name = tr.team_name
+      WHERE tr.requested_by = ${session.userId}::uuid
+      ORDER BY tr.created_at DESC
+    `,
+    sql`
+      SELECT t.id, t.name
+      FROM team_members tm
+      JOIN teams t ON t.id = tm.team_id
+      WHERE tm.user_id = ${session.userId}::uuid AND tm.role = 'admin'
+      LIMIT 1
+    `,
+  ])
+
+  const adminTeam = adminTeamRows[0] ?? null
+  return NextResponse.json({ requests, admin_team: adminTeam })
 }
 
 export async function POST(req: NextRequest) {
@@ -41,8 +52,15 @@ export async function POST(req: NextRequest) {
 
   const { team_name, reason = '' } = parsed.data
 
-  const existing = await sql`SELECT id FROM team_requests WHERE requested_by = ${session.userId}::uuid AND status = 'pending'`
-  if (existing.length > 0) {
+  const [adminCheck, pendingCheck] = await Promise.all([
+    sql`SELECT 1 FROM team_members WHERE user_id = ${session.userId}::uuid AND role = 'admin' LIMIT 1`,
+    sql`SELECT id FROM team_requests WHERE requested_by = ${session.userId}::uuid AND status = 'pending'`,
+  ])
+
+  if (adminCheck.length > 0) {
+    return NextResponse.json({ error: 'You are already an admin of a team' }, { status: 409 })
+  }
+  if (pendingCheck.length > 0) {
     return NextResponse.json({ error: 'You already have a pending team request' }, { status: 409 })
   }
 

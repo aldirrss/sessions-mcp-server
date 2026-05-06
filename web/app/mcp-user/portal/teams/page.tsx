@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Users, Plus, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { Users, Plus, Clock, CheckCircle, XCircle, ShieldCheck } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
 
@@ -10,6 +10,7 @@ type TeamRequest = {
   id: string; team_name: string; reason: string; status: string
   created_at: string; reviewed_at: string | null; team_id: string | null
 }
+type AdminTeam = { id: string; name: string } | null
 
 const STATUS_ICON = {
   pending:  <Clock className="w-4 h-4 text-yellow-500" />,
@@ -19,6 +20,7 @@ const STATUS_ICON = {
 
 export default function TeamsPage() {
   const [requests, setRequests] = useState<TeamRequest[]>([])
+  const [adminTeam, setAdminTeam] = useState<AdminTeam>(null)
   const [showForm, setShowForm] = useState(false)
   const [teamName, setTeamName] = useState('')
   const [reason, setReason] = useState('')
@@ -29,7 +31,11 @@ export default function TeamsPage() {
   const fetchRequests = useCallback(async () => {
     const res = await fetch(`${API_BASE}/portal/team-requests`)
     if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
-    if (res.ok) setRequests(await res.json())
+    if (res.ok) {
+      const data = await res.json()
+      setRequests(data.requests ?? [])
+      setAdminTeam(data.admin_team ?? null)
+    }
     setLoading(false)
   }, [])
 
@@ -52,15 +58,33 @@ export default function TeamsPage() {
   }
 
   const hasPending = requests.some(r => r.status === 'pending')
+  const canRequest = !hasPending && !adminTeam
 
   return (
     <div className="min-h-screen bg-gray-50">
       <UserPortalHeader title="Teams" subtitle="Manage your team workspaces" accentColor="bg-blue-600" />
 
       <main className="max-w-3xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-5">
+
+        {/* Admin team banner */}
+        {adminTeam && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <p className="text-sm text-blue-800">
+                You are admin of <span className="font-semibold">{adminTeam.name}</span>. Only one admin team is allowed per user.
+              </p>
+            </div>
+            <Link href={`/mcp-user/teams/${adminTeam.id}`}
+              className="flex-shrink-0 text-sm text-blue-600 hover:underline font-medium">
+              Manage →
+            </Link>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">My Teams</h2>
-          {!hasPending && (
+          {canRequest && (
             <button
               onClick={() => setShowForm(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -94,10 +118,8 @@ export default function TeamsPage() {
                     }`}>{r.status}</span>
                   </div>
                   {r.status === 'approved' && r.team_id && (
-                    <Link
-                      href={`/mcp-user/teams/${r.team_id}`}
-                      className="flex-shrink-0 text-sm text-blue-600 hover:underline font-medium"
-                    >
+                    <Link href={`/mcp-user/teams/${r.team_id}`}
+                      className="flex-shrink-0 text-sm text-blue-600 hover:underline font-medium">
                       Manage →
                     </Link>
                   )}

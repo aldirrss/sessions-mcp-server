@@ -293,17 +293,7 @@ _DDL_STEPS = [
     )
     """,
 
-    """
-    CREATE TABLE IF NOT EXISTS team_tokens (
-        id          UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
-        team_id     UUID  NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-        token_hash  TEXT  UNIQUE NOT NULL,
-        name        TEXT  NOT NULL DEFAULT 'Default',
-        created_by  UUID  NOT NULL REFERENCES users(id),
-        revoked     BOOLEAN NOT NULL DEFAULT false,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-    """,
+    "DROP TABLE IF EXISTS team_tokens CASCADE",
 
     """
     CREATE TABLE IF NOT EXISTS team_requests (
@@ -332,8 +322,6 @@ _DDL_STEPS = [
 
     "CREATE INDEX IF NOT EXISTS idx_team_members_team   ON team_members (team_id)",
     "CREATE INDEX IF NOT EXISTS idx_team_members_user   ON team_members (user_id)",
-    "CREATE INDEX IF NOT EXISTS idx_team_tokens_hash    ON team_tokens (token_hash)",
-    "CREATE INDEX IF NOT EXISTS idx_team_tokens_team    ON team_tokens (team_id)",
     "CREATE INDEX IF NOT EXISTS idx_team_requests_user  ON team_requests (requested_by)",
     "CREATE INDEX IF NOT EXISTS idx_team_requests_status ON team_requests (status)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_team       ON sessions (team_id)",
@@ -414,6 +402,23 @@ _DDL_STEPS = [
     "CREATE INDEX IF NOT EXISTS idx_skill_versions_slug ON skill_versions (slug, changed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_session_skills_session ON session_skills (session_id, used_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_session_skills_slug    ON session_skills (skill_slug, used_at DESC)",
+
+    # token_prefix — store first 8 chars of raw token for display
+    "ALTER TABLE user_tokens ADD COLUMN IF NOT EXISTS token_prefix TEXT",
+
+    # 1 admin per user across all teams (DB-enforced)
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_one_admin_per_user
+      ON team_members (user_id)
+      WHERE role = 'admin'
+    """,
+
+    # 1 pending request per user at a time
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_team_requests_one_pending_per_user
+      ON team_requests (requested_by)
+      WHERE status = 'pending'
+    """,
 
     # 13. Fungsi: isi search_vec untuk skills dari name + summary + content + tags
     """

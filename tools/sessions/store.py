@@ -24,14 +24,6 @@ def _current_user_id() -> Optional[str]:
     return user.get("id")
 
 
-def _current_team_id() -> Optional[str]:
-    """Returns team_id when authenticated via a team token (legacy path)."""
-    user = get_current_user()
-    if user is None:
-        return None
-    return user.get("team_id")
-
-
 async def _resolve_team_id(conn: asyncpg.Connection, team_name: str, user_id: str) -> str:
     """Resolve team slug/name to UUID, validating that user is a member."""
     row = await conn.fetchrow(
@@ -53,15 +45,6 @@ async def _has_session_access(
     conn: asyncpg.Connection, session_id: str, user_id: Optional[str]
 ) -> bool:
     """Return True if the current caller may read/write this session."""
-    # Legacy: team token auth — access only to that team's sessions
-    legacy_team_id = _current_team_id()
-    if legacy_team_id is not None:
-        result = await conn.fetchval(
-            "SELECT 1 FROM sessions WHERE session_id = $1 AND team_id = $2::uuid",
-            session_id, legacy_team_id,
-        )
-        return result is not None
-
     # Admin (unauthenticated server-to-server): full access
     if user_id is None:
         return True
@@ -155,7 +138,7 @@ async def write_session(
                 raise PermissionError("Must be authenticated to write team sessions.")
             team_id = await _resolve_team_id(conn, team, user_id)
         else:
-            team_id = _current_team_id()  # legacy team token fallback
+            team_id = None
 
         row = await conn.fetchrow(
             """
@@ -356,20 +339,15 @@ async def list_sessions(
             args.append(tag)
             conditions.append(f"${len(args)} = ANY(s.tags)")
 
-        # Scope: explicit team param > legacy team token > personal
-        legacy_team_id = _current_team_id()
         if team is not None and user_id is not None:
             team_id = await _resolve_team_id(conn, team, user_id)
             args.append(team_id)
-            conditions.append(f"s.team_id = ${len(args)}::uuid")
-        elif legacy_team_id is not None:
-            args.append(legacy_team_id)
             conditions.append(f"s.team_id = ${len(args)}::uuid")
         elif user_id is not None:
             # Personal scope: owned by user, no team — strict, no IS NULL fallback
             args.append(user_id)
             conditions.append(f"s.owner_id = ${len(args)}::uuid AND s.team_id IS NULL")
-        # else: admin (user_id=None, legacy_team_id=None) — no scope filter, sees all
+        # else: admin (user_id=None) — no scope filter, sees all
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         rows = await conn.fetch(base_query.format(where=where_clause), *args)
@@ -406,7 +384,6 @@ async def search_sessions(query: str, team: str | None = None) -> list[dict]:
     """Search sessions. Pass `team` to scope search to that team's sessions."""
     pool = await db.get_pool()
     user_id = _current_user_id()
-    legacy_team_id = _current_team_id()
 
     async with pool.acquire() as conn:
         args: list = [query, f"%{query}%"]
@@ -414,9 +391,6 @@ async def search_sessions(query: str, team: str | None = None) -> list[dict]:
         if team is not None and user_id is not None:
             resolved = await _resolve_team_id(conn, team, user_id)
             args.append(resolved)
-            scope_clause = f"AND s.team_id = ${len(args)}::uuid"
-        elif legacy_team_id is not None:
-            args.append(legacy_team_id)
             scope_clause = f"AND s.team_id = ${len(args)}::uuid"
         elif user_id is not None:
             args.append(user_id)

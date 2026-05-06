@@ -3,9 +3,14 @@
 Persistent session store — create, read, update, search, and manage the lifecycle of
 AI conversation sessions backed by PostgreSQL.
 
-Sessions are the core primitive of `lm-mcp-ai`. Each session has a unique ID, a title,
-a context block (free-form Markdown), and an append-only list of timestamped notes.
+Sessions are the core primitive of **Sessions MCP Server**. Each session has a unique ID,
+a title, a context block (free-form Markdown), and an append-only list of timestamped notes.
 All clients (claude.ai, Claude Code CLI, VSCode) share the same session store.
+
+Sessions can be **personal** (owned by a user) or **team-scoped** (shared within a team).
+Pass the `team` parameter to any write/list/search tool to operate on team sessions instead
+of personal ones. Access is validated against team membership before any operation is
+allowed.
 
 ---
 
@@ -56,6 +61,7 @@ existing notes.
 | `context` | string | yes | Full context (Markdown) |
 | `source` | string | no | `web` / `cli` / `vscode` (default: `web`) |
 | `tags` | string[] | no | Tags for filtering |
+| `team` | string | no | Team name slug — writes to team scope instead of personal |
 
 ---
 
@@ -79,6 +85,7 @@ Pinned sessions appear first. Archived sessions are hidden by default.
 |-----------|------|----------|---------|-------------|
 | `tag` | string | no | — | Filter by tag |
 | `show_archived` | boolean | no | `false` | Include archived sessions |
+| `team` | string | no | — | Team name slug — lists team sessions instead of personal |
 
 ---
 
@@ -110,6 +117,7 @@ Uses PostgreSQL `tsvector` for efficient full-text search with trigram fallback.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `query` | string | yes | Keyword to search |
+| `team` | string | no | Team name slug — searches team sessions instead of personal |
 
 Returns matching sessions with a content snippet and last-updated date.
 

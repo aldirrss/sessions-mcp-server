@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback, use } from 'react'
-import { Users, Key, BookOpen, MessageSquare, Trash2, Plus, Copy, Check, Link2, Clock } from 'lucide-react'
+import { Users, BookOpen, MessageSquare, Trash2, Plus, Copy, Check, Link2, Clock } from 'lucide-react'
 import UserPortalHeader from '@/components/user-portal-header'
 
-type Tab = 'sessions' | 'members' | 'tokens' | 'skills'
+type Tab = 'sessions' | 'members' | 'skills'
 type Member = { id: string; username: string; email: string; role: string; joined_at: string }
-type Token  = { id: string; name: string; revoked: boolean; created_at: string }
 type Session = { session_id: string; title: string; notes_count: number; updated_at: string }
 type Skill   = { slug: string; name: string; summary: string }
 type Invite  = { token: string; expires_at: string; created_at: string; used_at: string | null; used_by_username: string | null }
@@ -17,12 +16,9 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
   const [teamName, setTeamName] = useState('')
   const [role, setRole] = useState('')
   const [members, setMembers] = useState<Member[]>([])
-  const [tokens, setTokens] = useState<Token[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
   const [invites, setInvites] = useState<Invite[]>([])
-  const [newToken, setNewToken] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null)
   const [addUsername, setAddUsername] = useState('')
   const [addSkugSlug, setAddSkillSlug] = useState('')
@@ -37,28 +33,13 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
   }, [API])
 
   const fetchMembers  = useCallback(async () => { const r = await fetch(`${API}/members`);  if (r.ok) setMembers(await r.json()) }, [API])
-  const fetchTokens   = useCallback(async () => { const r = await fetch(`${API}/tokens`);   if (r.ok) setTokens(await r.json()) }, [API])
   const fetchSessions = useCallback(async () => { const r = await fetch(`${API}/sessions`); if (r.ok) setSessions(await r.json()) }, [API])
   const fetchSkills   = useCallback(async () => { const r = await fetch(`${API}/skills`);   if (r.ok) setSkills(await r.json()) }, [API])
   const fetchInvites  = useCallback(async () => { const r = await fetch(`${API}/invites`);  if (r.ok) setInvites(await r.json()) }, [API])
 
   useEffect(() => {
-    fetchTeam(); fetchSessions(); fetchMembers(); fetchTokens(); fetchSkills(); fetchInvites()
-  }, [fetchTeam, fetchSessions, fetchMembers, fetchTokens, fetchSkills, fetchInvites])
-
-  async function createToken() {
-    const name = prompt('Token name:')
-    if (!name) return
-    const res = await fetch(`${API}/tokens`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
-    const data = await res.json()
-    if (res.ok) { setNewToken(data.token); fetchTokens() }
-  }
-
-  async function revokeToken(id: string) {
-    if (!confirm('Revoke this token?')) return
-    await fetch(`${API}/tokens/${id}`, { method: 'DELETE' })
-    fetchTokens()
-  }
+    fetchTeam(); fetchSessions(); fetchMembers(); fetchSkills(); fetchInvites()
+  }, [fetchTeam, fetchSessions, fetchMembers, fetchSkills, fetchInvites])
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault(); setError('')
@@ -94,11 +75,6 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
     fetchSessions()
   }
 
-  async function copyToken(t: string) {
-    await navigator.clipboard.writeText(t)
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
-  }
-
   async function createInvite() {
     const res = await fetch(`${API}/invites`, { method: 'POST' })
     const data = await res.json()
@@ -128,7 +104,6 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
   const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'sessions', label: 'Sessions', icon: <MessageSquare className="w-3.5 h-3.5" /> },
     { key: 'members',  label: 'Members',  icon: <Users className="w-3.5 h-3.5" /> },
-    { key: 'tokens',   label: 'Tokens',   icon: <Key className="w-3.5 h-3.5" /> },
     { key: 'skills',   label: 'Skills',   icon: <BookOpen className="w-3.5 h-3.5" /> },
   ]
 
@@ -141,19 +116,6 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
       />
 
       <main className="max-w-3xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-4">
-        {newToken && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
-            <p className="text-sm font-semibold text-amber-800">⚠️ Copy this token now — it will not be shown again</p>
-            <div className="flex gap-2">
-              <code className="flex-1 bg-gray-900 text-green-400 px-3 py-2 rounded-lg text-xs font-mono break-all">{newToken}</code>
-              <button onClick={() => copyToken(newToken)} className="flex-shrink-0 p-2 rounded-lg border border-amber-200 bg-white hover:bg-amber-50">
-                {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-gray-500" />}
-              </button>
-            </div>
-            <button onClick={() => setNewToken(null)} className="text-xs text-amber-700 hover:underline">Dismiss</button>
-          </div>
-        )}
-
         {error && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
 
         {/* Team tab card */}
@@ -187,9 +149,9 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {sessions.map(s => (
-                      <tr key={s.session_id} className="hover:bg-gray-50">
+                      <tr key={s.session_id} className="hover:bg-gray-50 cursor-pointer" onClick={() => window.location.href = `/panel/mcp-user/teams/${teamId}/sessions/${s.session_id}`}>
                         <td className="px-4 py-3 font-mono text-xs text-gray-500">{s.session_id}</td>
-                        <td className="px-4 py-3 text-gray-900 font-medium">{s.title}</td>
+                        <td className="px-4 py-3 text-blue-600 font-medium hover:underline">{s.title}</td>
                         <td className="px-4 py-3 text-gray-500">{s.notes_count}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">{new Date(s.updated_at).toLocaleDateString()}</td>
                         {isAdmin && (
@@ -297,56 +259,6 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
             </div>
           )}
 
-          {/* Tokens */}
-          {tab === 'tokens' && (
-            <div>
-              <div className={`flex items-center justify-between gap-3 p-4 border-b border-gray-100 ${!isAdmin ? 'py-3' : ''}`}>
-                <p className="text-xs text-gray-400">Sessions created with this token are shared with all team members.</p>
-                {isAdmin && (
-                  <button onClick={createToken} className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-                    <Plus className="w-4 h-4" /> New Token
-                  </button>
-                )}
-              </div>
-              {tokens.length === 0 ? (
-                <div className="p-8 text-center text-sm text-gray-400">No tokens yet.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[320px]">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Name</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase hidden sm:table-cell">Created</th>
-                        {isAdmin && <th className="px-4 py-3" />}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {tokens.map(t => (
-                        <tr key={t.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium text-gray-900">{t.name}</td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${t.revoked ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                              {t.revoked ? 'revoked' : 'active'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">{new Date(t.created_at).toLocaleDateString()}</td>
-                          {isAdmin && !t.revoked && (
-                            <td className="px-4 py-3 text-right">
-                              <button onClick={() => revokeToken(t.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Skills */}
           {tab === 'skills' && (
             <div>
@@ -374,9 +286,9 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {skills.map(s => (
-                        <tr key={s.slug} className="hover:bg-gray-50">
+                        <tr key={s.slug} className="hover:bg-gray-50 cursor-pointer" onClick={() => window.location.href = `/panel/mcp-user/teams/${teamId}/skills/${s.slug}`}>
                           <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">{s.slug}</td>
-                          <td className="px-4 py-3 text-gray-500 text-xs">{s.summary || s.name}</td>
+                          <td className="px-4 py-3 text-blue-600 text-xs hover:underline">{s.summary || s.name}</td>
                           {isAdmin && (
                             <td className="px-4 py-3 text-right">
                               <button onClick={() => removeSkill(s.slug)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">

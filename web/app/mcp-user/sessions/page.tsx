@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { Search, MessageSquare, Pin, Trash2, Tag } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
@@ -126,7 +127,7 @@ function SessionList({ sessions, onDelete, onTogglePin, deletingId, togglingId }
       {sessions.map(s => (
         <div key={s.session_id} className="flex items-start gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{s.title}</p>
+            <Link href={`/mcp-user/sessions/${s.session_id}`} className="text-sm font-medium text-gray-900 truncate hover:text-blue-600 transition-colors block">{s.title}</Link>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               <span className="text-xs text-gray-400">
                 {new Date(s.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}

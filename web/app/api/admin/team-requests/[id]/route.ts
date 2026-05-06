@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import sql from '@/lib/db'
 import { requireAdmin } from '@/lib/require-session'
 import { sendUserTeamApproved, sendUserTeamRejected } from '@/lib/email'
-import { createHash, randomBytes } from 'crypto'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -45,17 +44,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     VALUES (${team.id}::uuid, ${request.requested_by}::uuid, 'admin')
   `
 
-  const rawToken = randomBytes(32).toString('hex')
-  const tokenHash = createHash('sha256').update(rawToken).digest('hex')
-  await sql`
-    INSERT INTO team_tokens (team_id, token_hash, name, created_by)
-    VALUES (${team.id}::uuid, ${tokenHash}, ${'Default'}, ${request.requested_by}::uuid)
-  `
-
   await sql`UPDATE team_requests SET status = 'approved', reviewed_at = NOW() WHERE id = ${id}::uuid`
 
   const [user] = await sql`SELECT username, email FROM users WHERE id = ${request.requested_by}::uuid`
   sendUserTeamApproved({ toEmail: user.email, username: user.username, teamName: team.name }).catch(() => {})
 
-  return NextResponse.json({ ok: true, status: 'approved', team_id: team.id, token: rawToken })
+  return NextResponse.json({ ok: true, status: 'approved', team_id: team.id })
 }

@@ -1,7 +1,7 @@
 # Admin Web Panel — Design Document
 
 **Date:** 2026-05-01
-**Updated:** 2026-05-05
+**Updated:** 2026-05-06
 **Status:** Implemented
 **URL:** `https://mcp.lemacore.com/panel/mcp-admin`
 
@@ -10,8 +10,8 @@
 ## Overview
 
 A full-stack TypeScript web panel for managing sessions, skills, users, config, and tokens
-stored in PostgreSQL. Deployed as a separate Docker service (`lema-mcp-web`) alongside
-the MCP server (`lema-mcp-ai`).
+stored in PostgreSQL. Deployed as a separate Docker service (`sessions-mcp-web`) alongside
+the MCP server (`sessions-mcp`).
 
 ---
 
@@ -46,54 +46,95 @@ web/
 │   │       ├── skills/[slug]/page.tsx
 │   │       ├── skills/import/page.tsx
 │   │       ├── users/page.tsx
-│   │       └── config/page.tsx
+│   │       ├── config/page.tsx
+│   │       ├── blacklist/page.tsx       # email blacklist management
+│   │       └── team-requests/page.tsx   # approve/reject team creation requests
 │   ├── mcp-user/
 │   │   ├── login/page.tsx
 │   │   ├── register/page.tsx
 │   │   ├── portal/
-│   │   │   ├── page.tsx                 # token management + GitHub PAT
+│   │   │   ├── page.tsx                 # tokens, GitHub PAT, team request
 │   │   │   ├── loading.tsx
 │   │   │   └── error.tsx
-│   │   └── skills/page.tsx
+│   │   ├── sessions/
+│   │   │   ├── page.tsx                 # personal session list
+│   │   │   └── [sessionId]/page.tsx     # personal session detail
+│   │   ├── skills/
+│   │   │   ├── page.tsx                 # global skills list
+│   │   │   └── [slug]/page.tsx          # global skill detail (read-only)
+│   │   └── teams/
+│   │       └── [teamId]/
+│   │           ├── page.tsx             # members, sessions, skills tabs
+│   │           ├── sessions/
+│   │           │   └── [sessionId]/page.tsx   # team session detail
+│   │           └── skills/
+│   │               └── [slug]/page.tsx  # team skill detail
 │   └── api/
 │       ├── auth/
-│       │   ├── login/route.ts           # admin login (bcrypt + rate limit)
+│       │   ├── login/route.ts
 │       │   ├── logout/route.ts
 │       │   ├── user-login/route.ts
 │       │   ├── user-logout/route.ts
-│       │   └── register/route.ts        # user registration (Zod validated)
+│       │   └── register/route.ts
 │       ├── users/
-│       │   ├── route.ts                 # GET all users (admin only)
-│       │   └── [id]/route.ts            # PATCH role/is_active (admin only)
+│       │   ├── route.ts
+│       │   └── [id]/route.ts
 │       ├── sessions/
-│       │   ├── route.ts                 # GET list, POST create (admin only)
+│       │   ├── route.ts
 │       │   └── [id]/
-│       │       ├── route.ts             # GET, PATCH, DELETE (admin only)
+│       │       ├── route.ts
 │       │       ├── notes/route.ts
 │       │       └── notes/[noteId]/route.ts
 │       ├── skills/
-│       │   ├── route.ts                 # GET list, POST create (admin only)
-│       │   ├── [slug]/route.ts          # GET, PATCH, DELETE (admin only)
+│       │   ├── route.ts
+│       │   ├── [slug]/route.ts
 │       │   └── import/route.ts
 │       ├── config/
-│       │   ├── route.ts                 # GET list, POST create (admin only)
-│       │   └── [key]/route.ts           # GET, PATCH, DELETE (admin only)
+│       │   ├── route.ts
+│       │   └── [key]/route.ts
+│       ├── blacklist/
+│       │   ├── route.ts                 # GET, POST (admin only)
+│       │   └── [id]/route.ts            # DELETE
+│       ├── admin/
+│       │   └── team-requests/
+│       │       ├── route.ts             # GET pending requests
+│       │       └── [id]/route.ts        # POST approve/reject
 │       ├── portal/
 │       │   ├── tokens/
-│       │   │   ├── route.ts             # GET, POST (user session auth)
+│       │   │   ├── route.ts             # GET, POST
 │       │   │   └── [id]/route.ts        # DELETE
 │       │   ├── github-token/route.ts
-│       │   └── skills/route.ts
+│       │   ├── skills/
+│       │   │   ├── route.ts             # GET global skills list
+│       │   │   └── [slug]/route.ts      # GET full skill content
+│       │   ├── sessions/
+│       │   │   ├── route.ts             # GET personal sessions
+│       │   │   └── [sessionId]/
+│       │   │       ├── route.ts         # GET, PATCH, DELETE
+│       │   │       └── notes/route.ts   # POST append note
+│       │   └── team-requests/route.ts   # GET status, POST submit
+│       ├── teams/
+│       │   └── [teamId]/
+│       │       ├── route.ts             # GET team info + role
+│       │       ├── sessions/
+│       │       │   ├── route.ts         # GET team sessions
+│       │       │   └── [id]/
+│       │       │       ├── route.ts     # GET, PATCH, DELETE
+│       │       │       └── notes/route.ts  # POST (admin only)
+│       │       └── skills/
+│       │           ├── route.ts         # GET team skills
+│       │           └── [slug]/route.ts  # DELETE (admin only)
 │       └── dashboard/route.ts
 ├── components/
-│   └── nav-sidebar.tsx
+│   ├── nav-sidebar.tsx
+│   └── user-portal-header.tsx
 ├── lib/
-│   ├── auth.ts                          # iron-session config + SessionData type
-│   ├── db.ts                            # postgres connection pool
-│   ├── require-session.ts               # requireAdmin() helper
-│   ├── schemas.ts                       # Zod schemas (login, register, token, user)
+│   ├── auth.ts
+│   ├── db.ts
+│   ├── require-session.ts
+│   ├── schemas.ts
 │   └── config.ts
-├── middleware.ts                         # page-level route protection
+├── middleware.ts
 ├── next.config.ts                        # basePath: /panel
 └── Dockerfile
 ```
@@ -122,8 +163,14 @@ web/
 |------|------|-------------|
 | Login | `/panel/mcp-user/login` | User login |
 | Register | `/panel/mcp-user/register` | Create account → receive first PAT |
-| Portal | `/panel/mcp-user/portal` | Create/revoke PATs, set GitHub PAT |
+| Portal | `/panel/mcp-user/portal` | Create/revoke PATs, set GitHub PAT, manage team request |
+| Sessions | `/panel/mcp-user/sessions` | Personal session list |
+| Session Detail | `/panel/mcp-user/sessions/:id` | Context, notes, pin/unpin, append, delete |
 | Skills | `/panel/mcp-user/skills` | Browse global skills (read-only) |
+| Skill Detail | `/panel/mcp-user/skills/:slug` | Full skill content (read-only) |
+| Team | `/panel/mcp-user/teams/:teamId` | Members, sessions, skills tabs |
+| Team Session Detail | `/panel/mcp-user/teams/:teamId/sessions/:id` | Read-only for members, full actions for admin |
+| Team Skill Detail | `/panel/mcp-user/teams/:teamId/skills/:slug` | View content; admin can remove from team |
 
 ---
 
@@ -203,7 +250,7 @@ web:
   build:
     context: ./web
     dockerfile: Dockerfile
-  container_name: lema-mcp-web
+  container_name: sessions-mcp-web
   restart: unless-stopped
   depends_on:
     postgres:

@@ -1,64 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Search, ChevronDown, ChevronUp } from 'lucide-react'
+import Link from 'next/link'
+import { BookOpen, Search, ChevronRight } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
 
 type Skill = {
   slug: string; name: string; summary: string
   category: string | null; tags: string[]; updated_at: string
-}
-
-function SkillCard({ skill }: { skill: Skill }) {
-  const [open, setOpen] = useState(false)
-  const [content, setContent] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function toggle() {
-    if (!open && content === null) {
-      setLoading(true)
-      const res = await fetch(`${API_BASE}/skills/${skill.slug}`)
-      const data = await res.json()
-      setContent(data.content ?? '')
-      setLoading(false)
-    }
-    setOpen(o => !o)
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      <button onClick={toggle} className="w-full text-left p-4 md:p-5 flex items-start justify-between gap-4 hover:bg-gray-50 transition-colors">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-sm font-semibold text-gray-900">{skill.name}</span>
-            {skill.category && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700">{skill.category}</span>
-            )}
-          </div>
-          {skill.summary && <p className="text-xs text-gray-500 line-clamp-2">{skill.summary}</p>}
-          <div className="flex flex-wrap gap-1 mt-2">
-            {skill.tags.map(t => (
-              <span key={t} className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500">{t}</span>
-            ))}
-            <span className="text-xs text-gray-300 font-mono ml-1">{skill.slug}</span>
-          </div>
-        </div>
-        <div className="flex-shrink-0 text-gray-400 mt-0.5">
-          {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </div>
-      </button>
-
-      {open && (
-        <div className="border-t border-gray-100 px-4 md:px-5 py-4">
-          {loading
-            ? <p className="text-sm text-gray-400">Loading…</p>
-            : <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-gray-50 rounded-xl p-4 overflow-x-auto max-h-96">{content}</pre>
-          }
-        </div>
-      )}
-    </div>
-  )
 }
 
 export default function UserSkillsPage() {
@@ -103,13 +53,38 @@ export default function UserSkillsPage() {
           <div className="text-center py-12">
             <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
             <p className="text-sm text-gray-400">
-              {search ? `No skills matching "${search}"` : 'No global skills yet. Ask your admin to import some.'}
+              {search ? `No skills matching "${search}"` : 'No global skills yet.'}
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-gray-400">{skills.length} skill{skills.length !== 1 ? 's' : ''}</p>
-            {skills.map(s => <SkillCard key={s.slug} skill={s} />)}
+          <div className="space-y-1">
+            <p className="text-xs text-gray-400 mb-2">{skills.length} skill{skills.length !== 1 ? 's' : ''}</p>
+            <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {skills.map(s => (
+                <Link
+                  key={s.slug}
+                  href={`/mcp-user/skills/${s.slug}`}
+                  className="flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-900">{s.name}</span>
+                      {s.category && (
+                        <span className="text-xs bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded-full">{s.category}</span>
+                      )}
+                    </div>
+                    {s.summary && <p className="text-xs text-gray-500 mt-0.5 truncate">{s.summary}</p>}
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      <span className="text-xs font-mono text-gray-300">{s.slug}</span>
+                      {s.tags.slice(0, 3).map(t => (
+                        <span key={t} className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </main>

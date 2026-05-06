@@ -7,7 +7,7 @@ import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
 
 type Token = {
-  id: string; name: string; last_used_at: string | null
+  id: string; name: string; token_prefix: string | null; last_used_at: string | null
   expires_at: string | null; revoked: boolean; created_at: string
 }
 
@@ -156,12 +156,17 @@ export default function PortalPage() {
                 <div key={t.id} className="flex items-center justify-between px-4 md:px-5 py-3.5 gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{t.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Created {new Date(t.created_at).toLocaleDateString()}
-                      {t.last_used_at && ` · Used ${new Date(t.last_used_at).toLocaleDateString()}`}
-                      {t.expires_at && ` · Expires ${new Date(t.expires_at).toLocaleDateString()}`}
-                      {!t.expires_at && ' · No expiry'}
-                    </p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <code className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                        {t.token_prefix ? `${t.token_prefix}••••••••` : '••••••••'}
+                      </code>
+                      <span className="text-xs text-gray-400">
+                        Created {new Date(t.created_at).toLocaleDateString()}
+                        {t.last_used_at && ` · Used ${new Date(t.last_used_at).toLocaleDateString()}`}
+                        {t.expires_at && ` · Expires ${new Date(t.expires_at).toLocaleDateString()}`}
+                        {!t.expires_at && ' · No expiry'}
+                      </span>
+                    </div>
                   </div>
                   <button onClick={() => handleRevoke(t.id)} disabled={revoking === t.id}
                     className="flex-shrink-0 p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40">
