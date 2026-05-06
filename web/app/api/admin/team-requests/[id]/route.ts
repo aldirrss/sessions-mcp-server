@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import sql from '@/lib/db'
 import { requireAdmin } from '@/lib/require-session'
-import { sendUserTeamApproved } from '@/lib/email'
+import { sendUserTeamApproved, sendUserTeamRejected } from '@/lib/email'
 import { createHash, randomBytes } from 'crypto'
 
 type Params = { params: Promise<{ id: string }> }
@@ -23,6 +23,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if (action === 'reject') {
     await sql`UPDATE team_requests SET status = 'rejected', reviewed_at = NOW() WHERE id = ${id}::uuid`
+    const [user] = await sql`SELECT username, email FROM users WHERE id = ${request.requested_by}::uuid`
+    if (user) {
+      sendUserTeamRejected({ toEmail: user.email, username: user.username, teamName: request.team_name }).catch(() => {})
+    }
     return NextResponse.json({ ok: true, status: 'rejected' })
   }
 
