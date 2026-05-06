@@ -4,27 +4,16 @@ from mcp.server.fastmcp import FastMCP
 
 from .store import (
     read_skill,
-    write_skill,
-    delete_skill,
     list_skills,
     search_skills,
-    sync_skills,
     track_skill,
-    list_session_skills,
-    list_skill_sessions,
-    get_skill_stats,
     recommend_skills,
 )
 from .models import (
-    SkillWriteInput,
     SkillReadInput,
-    SkillDeleteInput,
     SkillListInput,
     SkillSearchInput,
-    SkillSyncInput,
     SkillTrackInput,
-    SessionSkillsListInput,
-    SkillSessionsListInput,
     SkillRecommendInput,
 )
 
@@ -38,57 +27,6 @@ def _error(msg: str) -> str:
 
 def register(mcp: FastMCP) -> None:
     """Register all skills tools on the given FastMCP instance."""
-
-    # -----------------------------------------------------------------------
-    # Skills CRUD
-    # -----------------------------------------------------------------------
-
-    @mcp.tool(
-        name="skill_write",
-        annotations={
-            "title": "Write Skill",
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def skill_write(params: SkillWriteInput) -> str:
-        """
-        Create or update a skill in the library.
-
-        On update, the previous content is automatically saved to version history.
-        Use skill_read to verify content after writing.
-
-        Args:
-            params.slug: Unique skill identifier (e.g. 'mcp-builder').
-            params.name: Human-readable name.
-            params.content: Full Markdown content of the skill.
-            params.summary: Short 1-2 sentence description (shown in lists).
-            params.source: 'manual' or 'file'.
-            params.category: Group category (e.g. 'development', 'devops').
-            params.tags: Tags for filtering and recommendation.
-        """
-        try:
-            skill = await write_skill(
-                params.slug,
-                params.name,
-                params.content,
-                summary=params.summary,
-                source=params.source,
-                category=params.category,
-                tags=params.tags,
-            )
-            tags_note = f" | tags: {', '.join(skill['tags'])}" if skill["tags"] else ""
-            cat_note = f" | category: {skill['category']}" if skill["category"] else ""
-            return (
-                f"Skill `{params.slug}` saved.\n"
-                f"**Name:** {skill['name']}\n"
-                f"**Source:** {skill['source']}{cat_note}{tags_note}\n"
-                f"**Updated:** {skill['updated_at']}"
-            )
-        except Exception as e:
-            return _error(str(e))
 
     @mcp.tool(
         name="skill_read",
@@ -226,66 +164,6 @@ def register(mcp: FastMCP) -> None:
         except Exception as e:
             return _error(str(e))
 
-    @mcp.tool(
-        name="skill_delete",
-        annotations={
-            "title": "Delete Skill",
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def skill_delete(params: SkillDeleteInput) -> str:
-        """
-        Permanently delete a skill from the library.
-
-        Also removes all session-skill associations (session_skills) for this slug.
-        Version history (skill_versions) is preserved.
-
-        Args:
-            params.slug: Skill slug to delete.
-        """
-        try:
-            deleted = await delete_skill(params.slug)
-            if deleted:
-                return f"Skill `{params.slug}` deleted."
-            return f"Skill `{params.slug}` not found — nothing deleted."
-        except Exception as e:
-            return _error(str(e))
-
-    @mcp.tool(
-        name="skill_sync",
-        annotations={
-            "title": "Bulk Import Skills",
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def skill_sync(params: SkillSyncInput) -> str:
-        """
-        Bulk import or update skills from a list of skill definitions.
-
-        Each item must have: slug, name, content.
-        Optional fields: summary, category, tags.
-        Existing skills are updated (with version history); new ones are created.
-        All imported skills get source='file'.
-
-        Args:
-            params.skills: List of skill dicts to import.
-        """
-        try:
-            result = await sync_skills(params.skills)
-            return (
-                f"Skill sync complete.\n"
-                f"**Created:** {result['created']} | **Updated:** {result['updated']} "
-                f"| **Total processed:** {result['total']}"
-            )
-        except Exception as e:
-            return _error(str(e))
-
     # -----------------------------------------------------------------------
     # Session-skill tracking
     # -----------------------------------------------------------------------
@@ -338,123 +216,6 @@ def register(mcp: FastMCP) -> None:
             )
         except FileNotFoundError as e:
             return _error(str(e))
-        except Exception as e:
-            return _error(str(e))
-
-    @mcp.tool(
-        name="session_skills_list",
-        annotations={
-            "title": "List Skills Used in Session",
-            "readOnlyHint": True,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def session_skills_list(params: SessionSkillsListInput) -> str:
-        """
-        List all skills that have been used in a specific session.
-
-        Shows each skill with its name, category, tags, and when it was first used.
-
-        Args:
-            params.session_id: Session ID to query.
-        """
-        try:
-            skills = await list_session_skills(params.session_id)
-            if not skills:
-                return f"No skills tracked in session `{params.session_id}` yet."
-
-            lines = [
-                f"## Skills used in `{params.session_id}` ({len(skills)} skills)",
-                "",
-                "| Slug | Name | Category | First Used |",
-                "|------|------|----------|------------|",
-            ]
-            for s in skills:
-                cat = s["category"] or "-"
-                lines.append(f"| `{s['slug']}` | {s['name']} | {cat} | {s['used_at']} |")
-            return "\n".join(lines)
-        except Exception as e:
-            return _error(str(e))
-
-    @mcp.tool(
-        name="skill_sessions_list",
-        annotations={
-            "title": "List Sessions That Used a Skill",
-            "readOnlyHint": True,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def skill_sessions_list(params: SkillSessionsListInput) -> str:
-        """
-        List all sessions in which a specific skill has been used.
-
-        Useful for finding related work — "which sessions used the docker skill?"
-
-        Args:
-            params.slug: Skill slug to look up.
-        """
-        try:
-            sessions = await list_skill_sessions(params.slug)
-            if not sessions:
-                return f"Skill `{params.slug}` has not been used in any session yet."
-
-            lines = [
-                f"## Sessions using `{params.slug}` ({len(sessions)} sessions)",
-                "",
-                "| Session ID | Title | Source | Used At |",
-                "|------------|-------|--------|---------|",
-            ]
-            for s in sessions:
-                lines.append(
-                    f"| `{s['session_id']}` | {s['title']} | {s['source']} | {s['used_at']} |"
-                )
-            return "\n".join(lines)
-        except Exception as e:
-            return _error(str(e))
-
-    # -----------------------------------------------------------------------
-    # Analytics
-    # -----------------------------------------------------------------------
-
-    @mcp.tool(
-        name="skill_stats",
-        annotations={
-            "title": "Skill Usage Statistics",
-            "readOnlyHint": True,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def skill_stats() -> str:
-        """
-        Show usage statistics for all skills.
-
-        Returns each skill with total sessions used and last used timestamp,
-        ordered by most-used first.
-        """
-        try:
-            stats = await get_skill_stats()
-            if not stats:
-                return "No skills in library yet."
-
-            lines = [
-                f"## Skill Usage Statistics ({len(stats)} skills)",
-                "",
-                "| Slug | Name | Category | Sessions | Last Used |",
-                "|------|------|----------|----------|-----------|",
-            ]
-            for s in stats:
-                cat = s["category"] or "-"
-                last = s["last_used_at"] or "never"
-                lines.append(
-                    f"| `{s['slug']}` | {s['name']} | {cat} | {s['session_count']} | {last} |"
-                )
-            return "\n".join(lines)
         except Exception as e:
             return _error(str(e))
 

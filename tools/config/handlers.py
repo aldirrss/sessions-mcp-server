@@ -2,8 +2,8 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
-from .store import read_config, write_config, delete_config, list_config
-from .models import ConfigWriteInput, ConfigReadInput, ConfigDeleteInput, ConfigListInput
+from .store import read_config, write_config, list_config
+from .models import ConfigWriteInput, ConfigReadInput, ConfigListInput
 
 _logger = logging.getLogger("lm-mcp-ai.config")
 
@@ -122,27 +122,3 @@ def register(mcp: FastMCP) -> None:
         except Exception as e:
             return _error(str(e))
 
-    @mcp.tool(
-        name="config_delete",
-        annotations={
-            "title": "Delete Config",
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def config_delete(params: ConfigDeleteInput) -> str:
-        """
-        Delete a config entry permanently.
-
-        Args:
-            params.key: Config key to delete.
-        """
-        try:
-            deleted = await delete_config(params.key)
-            if deleted:
-                return f"Config `{params.key}` deleted."
-            return f"Config key `{params.key}` not found — nothing deleted."
-        except Exception as e:
-            return _error(str(e))

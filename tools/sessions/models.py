@@ -127,39 +127,12 @@ class SessionSearchInput(BaseModel):
     )
 
 
-class NotePinInput(BaseModel):
+class SessionUpdateInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    note_id: int = Field(..., description="ID of the note to pin.", ge=1)
-    session_id: str = Field(..., description="Session ID the note belongs to.", min_length=1, max_length=100)
-
-    @field_validator("session_id")
-    @classmethod
-    def validate_id(cls, v: str) -> str:
-        return _validate_session_id(v)
-
-
-class NoteUnpinInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    note_id: int = Field(..., description="ID of the note to unpin.", ge=1)
-    session_id: str = Field(..., description="Session ID the note belongs to.", min_length=1, max_length=100)
-
-    @field_validator("session_id")
-    @classmethod
-    def validate_id(cls, v: str) -> str:
-        return _validate_session_id(v)
-
-
-class SessionCompactInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    session_id: str = Field(..., description="Session ID to compact.", min_length=1, max_length=100)
-    before_days: int = Field(
-        default=30,
-        ge=1,
-        le=365,
-        description=(
-            "Compact unpinned notes older than this many days into the context field "
-            "and delete them. Pinned notes are never compacted. Default: 30 days."
-        ),
+    session_id: str = Field(..., description="Session ID to update.", min_length=1, max_length=100)
+    action: str = Field(
+        ...,
+        description="Lifecycle action: 'pin', 'unpin', 'archive', or 'restore'.",
     )
 
     @field_validator("session_id")
@@ -167,22 +140,29 @@ class SessionCompactInput(BaseModel):
     def validate_id(cls, v: str) -> str:
         return _validate_session_id(v)
 
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        allowed = {"pin", "unpin", "archive", "restore"}
+        if v not in allowed:
+            raise ValueError(f"Invalid action '{v}'. Must be one of: {', '.join(sorted(allowed))}.")
+        return v
 
-class SessionPinInput(BaseModel):
+
+class NoteUpdateInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    session_id: str = Field(..., description="Session ID to pin.", min_length=1, max_length=100)
+    note_id: int = Field(..., description="ID of the note (shown as [id:N] in session_read).", ge=1)
+    session_id: str = Field(..., description="Session ID the note belongs to.", min_length=1, max_length=100)
+    action: str = Field(..., description="Action: 'pin' or 'unpin'.")
 
     @field_validator("session_id")
     @classmethod
     def validate_id(cls, v: str) -> str:
         return _validate_session_id(v)
 
-
-class SessionArchiveInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    session_id: str = Field(..., description="Session ID to archive or restore.", min_length=1, max_length=100)
-
-    @field_validator("session_id")
+    @field_validator("action")
     @classmethod
-    def validate_id(cls, v: str) -> str:
-        return _validate_session_id(v)
+    def validate_action(cls, v: str) -> str:
+        if v not in {"pin", "unpin"}:
+            raise ValueError(f"Invalid action '{v}'. Must be 'pin' or 'unpin'.")
+        return v
