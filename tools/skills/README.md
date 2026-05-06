@@ -46,8 +46,8 @@ MCP tool calls (`skill_read`, `skill_list`, etc.).
 
 ## Import Formats
 
-Skills can be imported from `.md` files via the admin panel (`/panel/mcp-admin/skills/import`)
-or via `skill_sync`. Three file formats are supported:
+Skills can be imported from `.md` files via the admin panel (`/panel/mcp-admin/skills/import`).
+Three file formats are supported:
 
 ### Claude format
 
@@ -87,23 +87,11 @@ is used as the skill name.
 
 ## Tools
 
+Skill authoring (`skill_write`, `skill_delete`, `skill_sync`) and analytics
+(`skill_stats`, `session_skills_list`, `skill_sessions_list`) are available in the
+admin panel. The MCP tools below cover read-only access and session tracking.
+
 ### Skill CRUD
-
-#### `skill_write`
-Create or update a skill. Previous content is saved to `skill_versions` on every update.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `slug` | string | yes | Unique slug (e.g. `mcp-builder`) |
-| `name` | string | yes | Human-readable name |
-| `content` | string | yes | Full Markdown content |
-| `summary` | string | no | Short description shown in `skill_list` |
-| `source` | string | no | `manual` or `file` (default: `manual`) |
-| `category` | string | no | Group category |
-| `tags` | string[] | no | Tags for filtering and recommendation matching |
-| `is_global` | boolean | no | Make skill visible to all users (default: `false`) |
-
----
 
 #### `skill_read`
 Load the full content of a skill. When `session_id` is provided, usage is automatically
@@ -141,28 +129,6 @@ Returns matching skills with a content snippet.
 
 ---
 
-#### `skill_delete`
-Permanently delete a skill. Removes all `session_skills` associations.
-Version history in `skill_versions` is preserved.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `slug` | string | yes | Skill slug to delete |
-
----
-
-#### `skill_sync`
-Bulk import or update skills from a list. All imported skills get `source='file'`.
-Existing skills are updated with version history preserved; new ones are created.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `skills` | list[dict] | yes | List of skill objects |
-
-Each item must have `slug`, `name`, `content`. Optional fields: `summary`, `category`, `tags`, `is_global`.
-
----
-
 ### Session-Skill Tracking
 
 #### `skill_track`
@@ -175,34 +141,6 @@ Record that a skill was invoked in a session.
 |-----------|------|----------|-------------|
 | `session_id` | string | yes | Active session ID |
 | `skill_slug` | string | yes | Slug of the skill that was invoked |
-
----
-
-#### `session_skills_list`
-List all skills used in a specific session.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `session_id` | string | yes | Session ID to query |
-
-Returns a table with Slug, Name, Category, and First Used timestamp.
-
----
-
-#### `skill_sessions_list`
-List all sessions in which a specific skill has been used.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `slug` | string | yes | Skill slug to look up |
-
----
-
-### Analytics
-
-#### `skill_stats`
-Show usage statistics for all skills. Returns each skill with total sessions used and
-last used timestamp, ordered by most-used first. No parameters required.
 
 ---
 
@@ -220,16 +158,12 @@ tags and overall usage frequency.
 ## Typical Workflow
 
 ```
-# Import skills from files or a setup script
-skill_sync(skills=[...])
-
 # During a conversation
-skill_list()                                        # browse available skills
-skill_search(query="docker")                        # find relevant skills
-skill_read(slug="docker", session_id="my-session") # load content and auto-track
-
-# Review usage
-session_skills_list(session_id="my-session")        # what was used
-skill_stats()                                       # usage across all sessions
-skill_recommend(session_id="my-session")            # what to try next
+skill_list()                                         # browse available skills
+skill_search(query="docker")                         # find relevant skills
+skill_read(slug="docker", session_id="my-session")  # load content and auto-track
+skill_recommend(session_id="my-session")             # what to try next
 ```
+
+Skill authoring and usage analytics are available via the admin panel at
+`/panel/mcp-admin/skills`.

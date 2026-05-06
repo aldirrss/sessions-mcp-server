@@ -63,15 +63,6 @@ is present, Claude reads it and applies it as additional behavioral guidance.
 
 ---
 
-#### `config_delete`
-Permanently delete a config entry.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `key` | string | yes | Config key to delete |
-
----
-
 ## Built-in Config Keys
 
 These keys control server behavior and take effect on the next relevant cycle

@@ -327,9 +327,10 @@ curl -s -X POST "https://mcp.example.com/mcp" \
 
 ## Tools Reference
 
-Tools are grouped into 6 categories.
+18 tools across 5 categories. Admin operations (token management, user management, skill
+authoring) are handled exclusively via the web panel — no MCP tools required.
 
-### Sessions (13 tools)
+### Sessions (8 tools)
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -339,13 +340,8 @@ Tools are grouped into 6 categories.
 | `session_append` | write | Append a timestamped note to a session |
 | `session_delete` | write | Permanently delete a session and its notes |
 | `session_search` | read | Full-text search across sessions and notes |
-| `session_compact` | write | Merge old notes into context field and delete them |
-| `session_pin` | write | Protect a session from auto-vacuum |
-| `session_unpin` | write | Remove protection from a session |
-| `session_archive` | write | Soft-delete a session |
-| `session_restore` | write | Restore an archived session |
-| `note_pin` | write | Pin a note (always visible, never vacuumed) |
-| `note_unpin` | write | Unpin a note |
+| `session_update` | write | Lifecycle actions: `pin`, `unpin`, `archive`, `restore` |
+| `note_update` | write | Pin or unpin a note: `pin`, `unpin` |
 
 **Team sessions:** pass `team="team-name"` to `session_write`, `session_list`, and
 `session_search` to scope the operation to a team namespace. The user must be a member
@@ -360,56 +356,40 @@ session_list(team="my-team")
 > Team sessions are visible to all members of that team.
 > Admin access (master key) bypasses isolation and sees all sessions.
 
-### Skills (11 tools)
+### Skills (5 tools)
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `skill_write` | write | Create or update a skill |
 | `skill_read` | read | Load a skill's full Markdown content |
 | `skill_list` | read | List all skills (summary only) |
 | `skill_search` | read | Full-text search across skills |
-| `skill_delete` | write | Delete a skill |
-| `skill_sync` | write | Bulk import skills from a list |
 | `skill_track` | write | Record that a skill was used in a session |
-| `session_skills_list` | read | Skills used in a specific session |
-| `skill_sessions_list` | read | Sessions that used a specific skill |
-| `skill_stats` | read | Usage statistics for all skills |
 | `skill_recommend` | read | Suggest skills based on session tags |
 
-### GitHub Integration (3 tools)
+Skill authoring (`skill_write`, `skill_delete`, `skill_sync`) is available in the admin panel.
+
+### GitHub Integration (2 tools)
 
 | Tool | Type | Description |
 |------|------|-------------|
 | `session_link_repo` | write | Link a GitHub repo URL to a session |
-| `session_unlink_repo` | write | Remove the repo link from a session |
 | `repo_get_context` | read | Fetch default branch, recent commits, and open PRs |
 
-### Config (4 tools)
+### Config (3 tools)
 
 | Tool | Type | Description |
 |------|------|-------------|
 | `config_write` | write | Create or update a config entry |
 | `config_read` | read | Read a single config value |
 | `config_list` | read | List all config entries |
-| `config_delete` | write | Delete a config entry |
 
-### Vacuum (1 tool)
-
-| Tool | Type | Description |
-|------|------|-------------|
-| `vacuum_run` | write | Clean up old notes and archive/delete inactive sessions |
-
-### Auth (7 tools)
+### Auth (1 tool)
 
 | Tool | Type | Description |
 |------|------|-------------|
 | `user_me` | read | Return the currently authenticated user |
-| `token_create` | write | Create a new personal access token |
-| `token_list` | read | List all active tokens for the current user |
-| `token_revoke` | write | Revoke a token by ID |
-| `user_list` | read | List all users (admin only) |
-| `user_set_role` | write | Change a user's role: `user` or `admin` (admin only) |
-| `user_set_active` | write | Enable or disable a user account (admin only) |
+
+Token management and user administration are available in the web panel.
 
 ---
 
@@ -497,20 +477,13 @@ Automated retention to keep the database lean. Controlled by config keys in the 
 config_write(key="vacuum_enabled", value="true")
 ```
 
-### Manual run
-
-```
-vacuum_run(dry_run=true)    # preview — no changes made
-vacuum_run(dry_run=false)   # execute
-```
-
 ### Opt-out
 
 | Method | Effect |
 |--------|--------|
-| `session_pin(session_id)` | Session excluded from all vacuum phases |
+| `session_update(session_id, action="pin")` | Session excluded from all vacuum phases |
 | Add tag `keep` to a session | Session excluded from archive phase |
-| `note_pin(note_id, session_id)` | Note excluded from deletion |
+| `note_update(note_id, session_id, action="pin")` | Note excluded from deletion |
 
 ---
 

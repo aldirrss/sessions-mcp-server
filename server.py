@@ -60,7 +60,6 @@ from tools.sessions import register as register_sessions
 from tools.skills import register as register_skills
 from tools.github import register as register_github
 from tools.config import register as register_config
-from tools.vacuum import register as register_vacuum
 from tools.auth import register as register_auth
 
 # ---------------------------------------------------------------------------
@@ -84,7 +83,6 @@ register_sessions(mcp)
 register_skills(mcp)
 register_github(mcp)
 register_config(mcp)
-register_vacuum(mcp)
 register_auth(mcp)
 
 
