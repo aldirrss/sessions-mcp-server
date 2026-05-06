@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, Trash2, Plus, BookOpen, Github, ExternalLink, Unlink, Pin, Archive, RotateCcw } from 'lucide-react'
 
 import { API_BASE } from '@/lib/config'
+import NoteCard from '@/components/note-card'
 
 type Note = { id: number; content: string; source: string; pinned: boolean; created_at: string }
 type Skill = { slug: string; name: string; category: string | null; used_at: string }
@@ -272,25 +273,14 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
         {session.notes.length === 0 ? (
           <p className="text-sm text-gray-400">No notes yet.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {session.notes.map((note) => (
-              <div key={note.id} className={`rounded-xl border p-4 ${note.pinned ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'}`}>
-                <p className="text-sm text-gray-900 whitespace-pre-wrap">{note.content}</p>
-                <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-gray-400">
-                    {note.pinned && <span className="text-amber-600 font-medium mr-1">📌 pinned ·</span>}
-                    {note.source} · {new Date(note.created_at).toLocaleString()}
-                  </p>
-                  <button
-                    onClick={() => handleToggleNotePin(note.id, note.pinned)}
-                    disabled={togglingNote === note.id}
-                    className={`text-xs px-2 py-0.5 rounded transition-colors ${note.pinned ? 'text-amber-600 hover:bg-amber-100' : 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'}`}
-                    title={note.pinned ? 'Unpin note' : 'Pin note (always shown at top, never vacuumed)'}
-                  >
-                    {note.pinned ? 'Unpin' : 'Pin'}
-                  </button>
-                </div>
-              </div>
+              <NoteCard
+                key={note.id}
+                {...note}
+                onTogglePin={handleToggleNotePin}
+                togglingPin={togglingNote === note.id}
+              />
             ))}
           </div>
         )}

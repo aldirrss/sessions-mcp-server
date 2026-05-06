@@ -95,7 +95,7 @@ export default function PersonalSessionDetailPage({ params }: { params: Promise<
     <div className="min-h-screen bg-gray-50">
       <UserPortalHeader title={session.title} subtitle="Personal session" accentColor="bg-blue-600" />
 
-      <main className="max-w-3xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-4">
+      <main className="max-w-5xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-4">
         {/* Back + actions */}
         <div className="flex items-center justify-between">
           <Link href="/mcp-user/sessions" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
