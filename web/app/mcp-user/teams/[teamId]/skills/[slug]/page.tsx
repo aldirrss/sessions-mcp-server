@@ -21,15 +21,12 @@ export default function TeamSkillDetailPage({ params }: { params: Promise<{ team
   const [removing, setRemoving] = useState(false)
 
   const fetchSkill = useCallback(async () => {
-    const [skillRes, teamRes] = await Promise.all([
-      fetch(`${API_BASE}/portal/skills/${slug}`),
-      fetch(`${API_BASE}/teams/${teamId}`),
-    ])
-    if (skillRes.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
-    if (!skillRes.ok) { router.push(`/mcp-user/teams/${teamId}`); return }
-    const [skillData, teamData] = await Promise.all([skillRes.json(), teamRes.json()])
-    setSkill(skillData)
-    setRole(teamData.role ?? '')
+    const res = await fetch(`${API_BASE}/teams/${teamId}/skills/${slug}`)
+    if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
+    if (!res.ok) { router.push(`/mcp-user/teams/${teamId}`); return }
+    const data = await res.json()
+    setSkill(data)
+    setRole(data.viewer_role ?? '')
     setLoading(false)
   }, [slug, teamId, router])
 

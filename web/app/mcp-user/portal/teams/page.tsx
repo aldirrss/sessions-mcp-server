@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Users, Plus, Clock, CheckCircle, XCircle, ShieldCheck } from 'lucide-react'
+import { Users, Plus, Clock, CheckCircle, XCircle, ShieldCheck, ChevronRight } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
 
@@ -11,6 +11,7 @@ type TeamRequest = {
   created_at: string; reviewed_at: string | null; team_id: string | null
 }
 type AdminTeam = { id: string; name: string } | null
+type Membership = { id: string; name: string; role: string; joined_at: string }
 
 const STATUS_ICON = {
   pending:  <Clock className="w-4 h-4 text-yellow-500" />,
@@ -21,6 +22,7 @@ const STATUS_ICON = {
 export default function TeamsPage() {
   const [requests, setRequests] = useState<TeamRequest[]>([])
   const [adminTeam, setAdminTeam] = useState<AdminTeam>(null)
+  const [memberships, setMemberships] = useState<Membership[]>([])
   const [showForm, setShowForm] = useState(false)
   const [teamName, setTeamName] = useState('')
   const [reason, setReason] = useState('')
@@ -28,18 +30,24 @@ export default function TeamsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  const fetchRequests = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/portal/team-requests`)
-    if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
-    if (res.ok) {
-      const data = await res.json()
+  const fetchData = useCallback(async () => {
+    const [reqRes, memRes] = await Promise.all([
+      fetch(`${API_BASE}/portal/team-requests`),
+      fetch(`${API_BASE}/portal/memberships`),
+    ])
+    if (reqRes.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
+    if (reqRes.ok) {
+      const data = await reqRes.json()
       setRequests(data.requests ?? [])
       setAdminTeam(data.admin_team ?? null)
+    }
+    if (memRes.ok) {
+      setMemberships(await memRes.json())
     }
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchRequests() }, [fetchRequests])
+  useEffect(() => { fetchData() }, [fetchData])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -53,7 +61,7 @@ export default function TeamsPage() {
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed'); setSubmitting(false); return }
     setShowForm(false); setTeamName(''); setReason('')
-    fetchRequests()
+    fetchData()
     setSubmitting(false)
   }
 
@@ -82,6 +90,7 @@ export default function TeamsPage() {
           </div>
         )}
 
+        {/* My Teams — all memberships (joined via invite or owned) */}
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">My Teams</h2>
           {canRequest && (
@@ -97,41 +106,65 @@ export default function TeamsPage() {
 
         {loading ? (
           <div className="text-center text-sm text-gray-400 py-8">Loading…</div>
-        ) : requests.length === 0 ? (
+        ) : memberships.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
             <Users className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500">No team requests yet.</p>
-            <p className="text-xs text-gray-400 mt-1">Request a team to collaborate with other users.</p>
+            <p className="text-sm text-gray-500">You are not a member of any team yet.</p>
+            <p className="text-xs text-gray-400 mt-1">Request a team or join via invite link.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {requests.map(r => (
-              <div key={r.id} className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {STATUS_ICON[r.status as keyof typeof STATUS_ICON]}
-                    <span className="font-semibold text-gray-900 truncate">{r.team_name}</span>
-                    <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
-                      r.status === 'approved' ? 'bg-green-50 text-green-700' :
-                      r.status === 'rejected' ? 'bg-red-50 text-red-700' :
-                      'bg-yellow-50 text-yellow-700'
-                    }`}>{r.status}</span>
+          <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+            {memberships.map(m => (
+              <Link key={m.id} href={`/mcp-user/teams/${m.id}`}
+                className="flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900">{m.name}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                      m.role === 'admin' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
+                    }`}>{m.role}</span>
                   </div>
-                  {r.status === 'approved' && r.team_id && (
-                    <Link href={`/mcp-user/teams/${r.team_id}`}
-                      className="flex-shrink-0 text-sm text-blue-600 hover:underline font-medium">
-                      Manage →
-                    </Link>
-                  )}
+                  <p className="text-xs text-gray-400 mt-0.5">Joined {new Date(m.joined_at).toLocaleDateString()}</p>
                 </div>
-                {r.reason && <p className="text-sm text-gray-500 mt-2">{r.reason}</p>}
-                <p className="text-xs text-gray-400 mt-2">
-                  Requested {new Date(r.created_at).toLocaleDateString()}
-                  {r.reviewed_at && ` · Reviewed ${new Date(r.reviewed_at).toLocaleDateString()}`}
-                </p>
-              </div>
+                <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+              </Link>
             ))}
           </div>
+        )}
+
+        {/* Team requests section */}
+        {requests.length > 0 && (
+          <>
+            <h2 className="text-sm font-semibold text-gray-900 pt-2">Team Requests</h2>
+            <div className="space-y-3">
+              {requests.map(r => (
+                <div key={r.id} className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {STATUS_ICON[r.status as keyof typeof STATUS_ICON]}
+                      <span className="font-semibold text-gray-900 truncate">{r.team_name}</span>
+                      <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                        r.status === 'approved' ? 'bg-green-50 text-green-700' :
+                        r.status === 'rejected' ? 'bg-red-50 text-red-700' :
+                        'bg-yellow-50 text-yellow-700'
+                      }`}>{r.status}</span>
+                    </div>
+                    {r.status === 'approved' && r.team_id && (
+                      <Link href={`/mcp-user/teams/${r.team_id}`}
+                        className="flex-shrink-0 text-sm text-blue-600 hover:underline font-medium">
+                        Manage →
+                      </Link>
+                    )}
+                  </div>
+                  {r.reason && <p className="text-sm text-gray-500 mt-2">{r.reason}</p>}
+                  <p className="text-xs text-gray-400 mt-2">
+                    Requested {new Date(r.created_at).toLocaleDateString()}
+                    {r.reviewed_at && ` · Reviewed ${new Date(r.reviewed_at).toLocaleDateString()}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </main>
 
