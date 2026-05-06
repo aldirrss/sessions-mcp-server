@@ -1,1 +1,1 @@
-export const API_BASE = '/panel'
+export const API_BASE = '/panel/api'

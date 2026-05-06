@@ -16,7 +16,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true)
 
   const fetchUsers = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/users`)
+    const res = await fetch(`${API_BASE}/users`)
     const data = await res.json()
     setUsers(data.users ?? [])
     setLoading(false)
@@ -25,7 +25,7 @@ export default function UsersPage() {
   useEffect(() => { fetchUsers() }, [fetchUsers])
 
   async function patch(id: string, body: object) {
-    await fetch(`${API_BASE}/api/users/${id}`, {
+    await fetch(`${API_BASE}/users/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

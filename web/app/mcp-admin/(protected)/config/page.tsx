@@ -24,7 +24,7 @@ export default function ConfigPage() {
 
   const fetchConfig = useCallback(async () => {
     setLoading(true)
-    const res = await fetch(`${API_BASE}/api/config`)
+    const res = await fetch(`${API_BASE}/config`)
     const data = await res.json()
     setRows(data.rows)
     setLoading(false)
@@ -39,7 +39,7 @@ export default function ConfigPage() {
 
   async function handleSave(key: string) {
     setSaving(true)
-    await fetch(`${API_BASE}/api/config/${encodeURIComponent(key)}`, {
+    await fetch(`${API_BASE}/config/${encodeURIComponent(key)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editForm),
@@ -51,14 +51,14 @@ export default function ConfigPage() {
 
   async function handleDelete(key: string) {
     if (!confirm(`Delete config key "${key}"?`)) return
-    await fetch(`${API_BASE}/api/config/${encodeURIComponent(key)}`, { method: 'DELETE' })
+    await fetch(`${API_BASE}/config/${encodeURIComponent(key)}`, { method: 'DELETE' })
     fetchConfig()
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreating(true)
-    await fetch(`${API_BASE}/api/config`, {
+    await fetch(`${API_BASE}/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
