@@ -11,7 +11,6 @@ from .store import (
     search_sessions,
     get_stats,
     pin_note,
-    compact_session,
     set_session_pinned,
     set_session_archived,
 )
@@ -22,11 +21,8 @@ from .models import (
     SessionDeleteInput,
     SessionListInput,
     SessionSearchInput,
-    NotePinInput,
-    NoteUnpinInput,
-    SessionCompactInput,
-    SessionPinInput,
-    SessionArchiveInput,
+    SessionUpdateInput,
+    NoteUpdateInput,
 )
 
 _logger = logging.getLogger("lm-mcp-ai.sessions")
@@ -257,212 +253,89 @@ def register(mcp: FastMCP) -> None:
             return _error(str(e))
 
     # -----------------------------------------------------------------------
-    # Ide 3 — Note pinning + session compact
+    # Session lifecycle (pin / archive) — merged into one tool
     # -----------------------------------------------------------------------
 
     @mcp.tool(
-        name="note_pin",
+        name="session_update",
         annotations={
-            "title": "Pin a Note",
+            "title": "Update Session Lifecycle State",
             "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": True,
             "openWorldHint": False,
         },
     )
-    async def note_pin(params: NotePinInput) -> str:
+    async def session_update(params: SessionUpdateInput) -> str:
         """
-        Pin a note so it always appears at the top of session_read output.
+        Change the lifecycle state of a session.
 
-        Use this for critical decisions, blockers, or constraints that must
-        remain visible regardless of how many notes accumulate.
-        Pinned notes are never deleted by session_compact or auto-vacuum.
+        Actions:
+        - 'pin'     — protect from auto-vacuum indefinitely
+        - 'unpin'   — make eligible for auto-vacuum again
+        - 'archive' — soft-delete (hidden from list; recoverable)
+        - 'restore' — un-archive a previously archived session
 
         Args:
-            params.note_id: ID of the note to pin (shown as [id:N] in session_read).
-            params.session_id: Session ID the note belongs to.
+            params.session_id: Session ID to update.
+            params.action: One of 'pin', 'unpin', 'archive', 'restore'.
         """
         try:
-            note = await pin_note(params.note_id, params.session_id, pinned=True)
-            if note is None:
-                return _error(f"Note {params.note_id} not found in session '{params.session_id}'.")
-            return f"Note {params.note_id} pinned. It will always appear at the top of session_read."
+            if params.action in ("pin", "unpin"):
+                found = await set_session_pinned(params.session_id, pinned=(params.action == "pin"))
+                if not found:
+                    return _error(f"Session '{params.session_id}' not found.")
+                if params.action == "pin":
+                    return f"Session `{params.session_id}` pinned. Auto-vacuum will never touch it."
+                return f"Session `{params.session_id}` unpinned."
+            else:
+                found = await set_session_archived(params.session_id, archived=(params.action == "archive"))
+                if not found:
+                    return _error(f"Session '{params.session_id}' not found.")
+                if params.action == "archive":
+                    return (
+                        f"Session `{params.session_id}` archived.\n"
+                        "It will be permanently deleted after vacuum_sessions_days (default 180 days).\n"
+                        "Use `session_update(action='restore')` to undo."
+                    )
+                return f"Session `{params.session_id}` restored from archive."
         except Exception as e:
             return _error(str(e))
 
+    # -----------------------------------------------------------------------
+    # Note pin / unpin — merged into one tool
+    # -----------------------------------------------------------------------
+
     @mcp.tool(
-        name="note_unpin",
+        name="note_update",
         annotations={
-            "title": "Unpin a Note",
+            "title": "Pin or Unpin a Note",
             "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": True,
             "openWorldHint": False,
         },
     )
-    async def note_unpin(params: NoteUnpinInput) -> str:
+    async def note_update(params: NoteUpdateInput) -> str:
         """
-        Unpin a previously pinned note.
+        Pin or unpin a note.
 
-        After unpinning, the note returns to chronological order and becomes
-        eligible for session_compact and auto-vacuum.
+        Pinned notes always appear at the top of session_read and are never
+        deleted by auto-vacuum. Use 'pin' for critical decisions or blockers;
+        use 'unpin' to return the note to chronological order.
 
         Args:
-            params.note_id: ID of the note to unpin.
+            params.note_id: ID of the note (shown as [id:N] in session_read).
             params.session_id: Session ID the note belongs to.
+            params.action: 'pin' or 'unpin'.
         """
         try:
-            note = await pin_note(params.note_id, params.session_id, pinned=False)
+            note = await pin_note(params.note_id, params.session_id, pinned=(params.action == "pin"))
             if note is None:
                 return _error(f"Note {params.note_id} not found in session '{params.session_id}'.")
+            if params.action == "pin":
+                return f"Note {params.note_id} pinned. It will always appear at the top of session_read."
             return f"Note {params.note_id} unpinned."
-        except Exception as e:
-            return _error(str(e))
-
-    @mcp.tool(
-        name="session_compact",
-        annotations={
-            "title": "Compact Old Notes into Context",
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": False,
-        },
-    )
-    async def session_compact(params: SessionCompactInput) -> str:
-        """
-        Merge old unpinned notes into the session context and delete them.
-
-        Keeps the notes table lean while preserving history in the context field.
-        The compacted notes are appended as a formatted '## Compacted Notes' section
-        in the context. Pinned notes are never compacted.
-
-        Use this when a session has accumulated many notes and session_read is
-        becoming too long to fit in context.
-
-        Args:
-            params.session_id: Session to compact.
-            params.before_days: Compact notes older than this many days (default 30).
-        """
-        try:
-            result = await compact_session(params.session_id, before_days=params.before_days)
-            return result["message"]
-        except FileNotFoundError as e:
-            return _error(str(e))
-        except Exception as e:
-            return _error(str(e))
-
-    # -----------------------------------------------------------------------
-    # Ide 4 — Session pin / archive lifecycle
-    # -----------------------------------------------------------------------
-
-    @mcp.tool(
-        name="session_pin",
-        annotations={
-            "title": "Pin Session",
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def session_pin(params: SessionPinInput) -> str:
-        """
-        Pin a session to prevent it from being archived or deleted by auto-vacuum.
-
-        Pinned sessions are excluded from all vacuum operations regardless of age.
-
-        Args:
-            params.session_id: Session ID to pin.
-        """
-        try:
-            found = await set_session_pinned(params.session_id, pinned=True)
-            if not found:
-                return _error(f"Session '{params.session_id}' not found.")
-            return f"Session `{params.session_id}` pinned. Auto-vacuum will never touch it."
-        except Exception as e:
-            return _error(str(e))
-
-    @mcp.tool(
-        name="session_unpin",
-        annotations={
-            "title": "Unpin Session",
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def session_unpin(params: SessionPinInput) -> str:
-        """
-        Remove the pin from a session, making it eligible for auto-vacuum again.
-
-        Args:
-            params.session_id: Session ID to unpin.
-        """
-        try:
-            found = await set_session_pinned(params.session_id, pinned=False)
-            if not found:
-                return _error(f"Session '{params.session_id}' not found.")
-            return f"Session `{params.session_id}` unpinned."
-        except Exception as e:
-            return _error(str(e))
-
-    @mcp.tool(
-        name="session_archive",
-        annotations={
-            "title": "Archive Session",
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def session_archive(params: SessionArchiveInput) -> str:
-        """
-        Soft-delete a session by marking it as archived.
-
-        Archived sessions are hidden from session_list by default but can be
-        restored with session_restore. They will be permanently deleted after
-        vacuum_sessions_days (default 180 days) by auto-vacuum.
-
-        Args:
-            params.session_id: Session ID to archive.
-        """
-        try:
-            found = await set_session_archived(params.session_id, archived=True)
-            if not found:
-                return _error(f"Session '{params.session_id}' not found.")
-            return (
-                f"Session `{params.session_id}` archived.\n"
-                "It will be permanently deleted after vacuum_sessions_days (default 180 days).\n"
-                "Use `session_restore` to undo."
-            )
-        except Exception as e:
-            return _error(str(e))
-
-    @mcp.tool(
-        name="session_restore",
-        annotations={
-            "title": "Restore Archived Session",
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )
-    async def session_restore(params: SessionArchiveInput) -> str:
-        """
-        Restore an archived session, making it active again.
-
-        Args:
-            params.session_id: Session ID to restore.
-        """
-        try:
-            found = await set_session_archived(params.session_id, archived=False)
-            if not found:
-                return _error(f"Session '{params.session_id}' not found.")
-            return f"Session `{params.session_id}` restored from archive."
         except Exception as e:
             return _error(str(e))
 
