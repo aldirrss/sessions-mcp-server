@@ -30,7 +30,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     FROM notes WHERE session_id = ${id}
     ORDER BY pinned DESC, created_at ASC
   `
-  return NextResponse.json({ ...row, notes, viewer_role: member.role })
+  const skills = await sql`
+    SELECT ss.skill_slug, s.name, s.category, ss.used_at
+    FROM session_skills ss
+    LEFT JOIN skills s ON s.slug = ss.skill_slug
+    WHERE ss.session_id = ${id}
+    ORDER BY ss.used_at ASC
+  `
+  return NextResponse.json({ ...row, notes, skills, viewer_role: member.role })
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
