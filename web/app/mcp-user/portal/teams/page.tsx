@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Users, Plus, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { API_BASE } from '@/lib/config'
+import UserPortalHeader from '@/components/user-portal-header'
 
 type TeamRequest = {
   id: string; team_name: string; reason: string; status: string
@@ -25,7 +27,8 @@ export default function TeamsPage() {
   const [loading, setLoading] = useState(true)
 
   const fetchRequests = useCallback(async () => {
-    const res = await fetch('/panel/api/portal/team-requests')
+    const res = await fetch(`${API_BASE}/portal/team-requests`)
+    if (res.status === 401) { window.location.href = '/panel/mcp-user/login'; return }
     if (res.ok) setRequests(await res.json())
     setLoading(false)
   }, [])
@@ -36,7 +39,7 @@ export default function TeamsPage() {
     e.preventDefault()
     setError('')
     setSubmitting(true)
-    const res = await fetch('/panel/api/portal/team-requests', {
+    const res = await fetch(`${API_BASE}/portal/team-requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ team_name: teamName, reason }),
@@ -51,65 +54,67 @@ export default function TeamsPage() {
   const hasPending = requests.some(r => r.status === 'pending')
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Teams</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Request a team workspace or manage your teams</p>
-        </div>
-        {!hasPending && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Request Team
-          </button>
-        )}
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <UserPortalHeader title="Teams" subtitle="Manage your team workspaces" accentColor="bg-blue-600" />
 
-      {loading ? (
-        <div className="text-center text-sm text-gray-400 py-8">Loading…</div>
-      ) : requests.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-          <Users className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm text-gray-500">No team requests yet.</p>
-          <p className="text-xs text-gray-400 mt-1">Request a team to collaborate with other users.</p>
+      <main className="max-w-3xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">My Teams</h2>
+          {!hasPending && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Request Team</span>
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="space-y-3">
-          {requests.map(r => (
-            <div key={r.id} className="bg-white rounded-2xl border border-gray-200 p-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {STATUS_ICON[r.status as keyof typeof STATUS_ICON]}
-                  <span className="font-semibold text-gray-900">{r.team_name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    r.status === 'approved' ? 'bg-green-50 text-green-700' :
-                    r.status === 'rejected' ? 'bg-red-50 text-red-700' :
-                    'bg-yellow-50 text-yellow-700'
-                  }`}>{r.status}</span>
+
+        {loading ? (
+          <div className="text-center text-sm text-gray-400 py-8">Loading…</div>
+        ) : requests.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
+            <Users className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">No team requests yet.</p>
+            <p className="text-xs text-gray-400 mt-1">Request a team to collaborate with other users.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {requests.map(r => (
+              <div key={r.id} className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {STATUS_ICON[r.status as keyof typeof STATUS_ICON]}
+                    <span className="font-semibold text-gray-900 truncate">{r.team_name}</span>
+                    <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                      r.status === 'approved' ? 'bg-green-50 text-green-700' :
+                      r.status === 'rejected' ? 'bg-red-50 text-red-700' :
+                      'bg-yellow-50 text-yellow-700'
+                    }`}>{r.status}</span>
+                  </div>
+                  {r.status === 'approved' && r.team_id && (
+                    <Link
+                      href={`/mcp-user/teams/${r.team_id}`}
+                      className="flex-shrink-0 text-sm text-blue-600 hover:underline font-medium"
+                    >
+                      Manage →
+                    </Link>
+                  )}
                 </div>
-                {r.status === 'approved' && r.team_id && (
-                  <Link
-                    href={`/mcp-user/teams/${r.team_id}`}
-                    className="text-sm text-blue-600 hover:underline font-medium"
-                  >
-                    Manage →
-                  </Link>
-                )}
+                {r.reason && <p className="text-sm text-gray-500 mt-2">{r.reason}</p>}
+                <p className="text-xs text-gray-400 mt-2">
+                  Requested {new Date(r.created_at).toLocaleDateString()}
+                  {r.reviewed_at && ` · Reviewed ${new Date(r.reviewed_at).toLocaleDateString()}`}
+                </p>
               </div>
-              {r.reason && <p className="text-sm text-gray-500 mt-2">{r.reason}</p>}
-              <p className="text-xs text-gray-400 mt-2">
-                Requested {new Date(r.created_at).toLocaleDateString()}
-                {r.reviewed_at && ` · Reviewed ${new Date(r.reviewed_at).toLocaleDateString()}`}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </main>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md space-y-4">
             <h2 className="text-lg font-semibold text-gray-900">Request a Team</h2>
             {error && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -125,7 +130,7 @@ export default function TeamsPage() {
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 placeholder="Describe what this team is for…" />
             </div>
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-1">
               <button type="button" onClick={() => setShowForm(false)}
                 className="flex-1 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                 Cancel
