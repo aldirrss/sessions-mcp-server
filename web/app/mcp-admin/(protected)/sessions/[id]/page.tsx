@@ -141,7 +141,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/panel/mcp-admin/sessions" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
+        <Link href="/mcp-admin/sessions" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Sessions
         </Link>
         <div className="flex items-center gap-2">
