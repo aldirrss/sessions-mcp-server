@@ -25,34 +25,59 @@ def _current_user_id() -> Optional[str]:
 
 
 def _current_team_id() -> Optional[str]:
+    """Returns team_id when authenticated via a team token (legacy path)."""
     user = get_current_user()
     if user is None:
         return None
     return user.get("team_id")
 
 
-async def _has_session_access(conn: asyncpg.Connection, session_id: str, user_id: Optional[str]) -> bool:
-    """Return True if the current caller may read/write this session.
+async def _resolve_team_id(conn: asyncpg.Connection, team_name: str, user_id: str) -> str:
+    """Resolve team slug/name to UUID, validating that user is a member."""
+    row = await conn.fetchrow(
+        """
+        SELECT t.id FROM teams t
+        JOIN team_members tm ON tm.team_id = t.id
+        WHERE t.name = $1 AND tm.user_id = $2::uuid
+        """,
+        team_name, user_id,
+    )
+    if row is None:
+        raise PermissionError(
+            f"Team '{team_name}' not found or you are not a member of it."
+        )
+    return str(row["id"])
 
-    - Admin (user_id=None, team_id=None): full access
-    - Team token (team_id set): access only to sessions in that team
-    - Regular user: access to own sessions (owner_id = user_id) or legacy unowned
-    """
-    team_id = _current_team_id()
-    if team_id is not None:
+
+async def _has_session_access(
+    conn: asyncpg.Connection, session_id: str, user_id: Optional[str]
+) -> bool:
+    """Return True if the current caller may read/write this session."""
+    # Legacy: team token auth — access only to that team's sessions
+    legacy_team_id = _current_team_id()
+    if legacy_team_id is not None:
         result = await conn.fetchval(
             "SELECT 1 FROM sessions WHERE session_id = $1 AND team_id = $2::uuid",
-            session_id, team_id,
+            session_id, legacy_team_id,
         )
         return result is not None
+
+    # Admin (unauthenticated server-to-server): full access
     if user_id is None:
         return True
+
+    # Regular user: owns the session personally OR is a member of the session's team
     result = await conn.fetchval(
         """
-        SELECT 1 FROM sessions
-        WHERE session_id = $1
-          AND (owner_id = $2::uuid OR owner_id IS NULL)
-          AND team_id IS NULL
+        SELECT 1 FROM sessions s
+        WHERE s.session_id = $1
+          AND (
+            (s.owner_id = $2::uuid AND s.team_id IS NULL)
+            OR EXISTS (
+              SELECT 1 FROM team_members tm
+              WHERE tm.team_id = s.team_id AND tm.user_id = $2::uuid
+            )
+          )
         """,
         session_id, user_id,
     )
@@ -113,17 +138,25 @@ async def write_session(
     context: str,
     source: str = "unknown",
     tags: list[str] | None = None,
+    team: str | None = None,
 ) -> dict:
     """
-    Create a new session or overwrite title/context/source/tags of an existing one.
-    Notes are preserved on update. updated_at is auto-bumped by DB trigger.
+    Create or overwrite a session. If `team` is given, the session is saved to that
+    team's namespace (user must be a member). Otherwise saved as a personal session.
     """
     pool = await db.get_pool()
     tags_val = tags or []
     user_id = _current_user_id()
 
-    team_id = _current_team_id()
+    # Determine team_id: explicit team param > legacy team token
     async with pool.acquire() as conn:
+        if team is not None:
+            if user_id is None:
+                raise PermissionError("Must be authenticated to write team sessions.")
+            team_id = await _resolve_team_id(conn, team, user_id)
+        else:
+            team_id = _current_team_id()  # legacy team token fallback
+
         row = await conn.fetchrow(
             """
             INSERT INTO sessions (session_id, title, context, source, tags, owner_id, team_id)
@@ -145,11 +178,7 @@ async def write_session(
 
 
 async def append_note(session_id: str, content: str, source: str = "unknown") -> dict:
-    """
-    Append a timestamped note to an existing session.
-    Runs in a single transaction: verify session exists → insert note → touch updated_at.
-    Raises FileNotFoundError if the session does not exist.
-    """
+    """Append a timestamped note to an existing session."""
     pool = await db.get_pool()
     user_id = _current_user_id()
 
@@ -196,11 +225,7 @@ async def pin_note(note_id: int, session_id: str, pinned: bool) -> Optional[dict
 
 
 async def compact_session(session_id: str, before_days: int = 30) -> dict:
-    """
-    Merge unpinned notes older than `before_days` days into the context field.
-    Deletes the compacted notes. Returns summary dict.
-    Raises FileNotFoundError if session not found.
-    """
+    """Merge unpinned notes older than `before_days` days into the context field."""
     pool = await db.get_pool()
     user_id = _current_user_id()
     async with pool.acquire() as conn:
@@ -266,7 +291,6 @@ async def compact_session(session_id: str, before_days: int = 30) -> dict:
 
 
 async def set_session_pinned(session_id: str, pinned: bool) -> bool:
-    """Set pinned flag on a session. Returns True if found and accessible."""
     pool = await db.get_pool()
     user_id = _current_user_id()
     async with pool.acquire() as conn:
@@ -280,7 +304,6 @@ async def set_session_pinned(session_id: str, pinned: bool) -> bool:
 
 
 async def set_session_archived(session_id: str, archived: bool) -> bool:
-    """Set archived flag on a session. Returns True if found and accessible."""
     pool = await db.get_pool()
     user_id = _current_user_id()
     async with pool.acquire() as conn:
@@ -293,10 +316,14 @@ async def set_session_archived(session_id: str, archived: bool) -> bool:
     return result == "UPDATE 1"
 
 
-async def list_sessions(tag: str | None = None, show_archived: bool = False) -> list[dict]:
+async def list_sessions(
+    tag: str | None = None,
+    show_archived: bool = False,
+    team: str | None = None,
+) -> list[dict]:
     """
-    List all sessions ordered by most-recently updated.
-    Pass tag to filter by a specific tag value (exact match, case-sensitive).
+    List sessions. Pass `team` (team name) to list that team's sessions — user must be a member.
+    Without `team`, lists personal sessions only.
     """
     pool = await db.get_pool()
     user_id = _current_user_id()
@@ -319,20 +346,31 @@ async def list_sessions(tag: str | None = None, show_archived: bool = False) -> 
     """
 
     async with pool.acquire() as conn:
-        conditions = []
+        conditions: list[str] = []
         args: list = []
+
         if not show_archived:
             conditions.append("s.archived = false")
+
         if tag:
             args.append(tag)
             conditions.append(f"${len(args)} = ANY(s.tags)")
-        team_id = _current_team_id()
-        if team_id is not None:
+
+        # Scope: explicit team param > legacy team token > personal
+        legacy_team_id = _current_team_id()
+        if team is not None and user_id is not None:
+            team_id = await _resolve_team_id(conn, team, user_id)
             args.append(team_id)
             conditions.append(f"s.team_id = ${len(args)}::uuid")
+        elif legacy_team_id is not None:
+            args.append(legacy_team_id)
+            conditions.append(f"s.team_id = ${len(args)}::uuid")
         elif user_id is not None:
+            # Personal scope: owned by user, no team — strict, no IS NULL fallback
             args.append(user_id)
-            conditions.append(f"(s.owner_id = ${len(args)}::uuid OR s.owner_id IS NULL) AND s.team_id IS NULL")
+            conditions.append(f"s.owner_id = ${len(args)}::uuid AND s.team_id IS NULL")
+        # else: admin (user_id=None, legacy_team_id=None) — no scope filter, sees all
+
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         rows = await conn.fetch(base_query.format(where=where_clause), *args)
 
@@ -352,7 +390,6 @@ async def list_sessions(tag: str | None = None, show_archived: bool = False) -> 
 
 
 async def delete_session(session_id: str) -> bool:
-    """Delete a session and all its notes (CASCADE). Returns True if deleted."""
     pool = await db.get_pool()
     user_id = _current_user_id()
     async with pool.acquire() as conn:
@@ -365,28 +402,28 @@ async def delete_session(session_id: str) -> bool:
     return result == "DELETE 1"
 
 
-async def search_sessions(query: str) -> list[dict]:
-    """
-    Search sessions using PostgreSQL full-text search (tsvector) with ILIKE fallback.
-    Searches across title, context, tags, and note content.
-    Results are scoped to the current user (admin sees all).
-    """
+async def search_sessions(query: str, team: str | None = None) -> list[dict]:
+    """Search sessions. Pass `team` to scope search to that team's sessions."""
     pool = await db.get_pool()
     user_id = _current_user_id()
-    team_id = _current_team_id()
-    if team_id is not None:
-        scope_clause = "AND s.team_id = $3::uuid"
-    elif user_id is not None:
-        scope_clause = "AND (s.owner_id = $3::uuid OR s.owner_id IS NULL) AND s.team_id IS NULL"
-    else:
-        scope_clause = ""
+    legacy_team_id = _current_team_id()
 
     async with pool.acquire() as conn:
-        args = [query, f"%{query}%"]
-        if team_id is not None:
-            args.append(team_id)
+        args: list = [query, f"%{query}%"]
+
+        if team is not None and user_id is not None:
+            resolved = await _resolve_team_id(conn, team, user_id)
+            args.append(resolved)
+            scope_clause = f"AND s.team_id = ${len(args)}::uuid"
+        elif legacy_team_id is not None:
+            args.append(legacy_team_id)
+            scope_clause = f"AND s.team_id = ${len(args)}::uuid"
         elif user_id is not None:
             args.append(user_id)
+            scope_clause = f"AND s.owner_id = ${len(args)}::uuid AND s.team_id IS NULL"
+        else:
+            scope_clause = ""
+
         rows = await conn.fetch(
             f"""
             SELECT DISTINCT ON (s.session_id)
@@ -414,7 +451,6 @@ async def search_sessions(query: str) -> list[dict]:
         )
 
     sorted_rows = sorted(rows, key=lambda r: (-r["rank"], r["updated_at"]))
-
     return [
         {
             "session_id": r["session_id"],
@@ -427,7 +463,6 @@ async def search_sessions(query: str) -> list[dict]:
 
 
 async def get_stats() -> dict:
-    """Return aggregate stats: total sessions, total notes, last update."""
     pool = await db.get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

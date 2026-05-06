@@ -45,6 +45,12 @@ class SessionWriteInput(BaseModel):
         default=None,
         description="Optional list of tags for filtering (e.g. ['odoo', 'backend']).",
     )
+    team: Optional[str] = Field(
+        default=None,
+        description="Team name to save this session under (e.g. 'mazuta-erp'). "
+                    "You must be a member. Omit to save as a personal session.",
+        max_length=80,
+    )
 
     @field_validator("session_id")
     @classmethod
@@ -100,6 +106,12 @@ class SessionListInput(BaseModel):
         default=False,
         description="Include archived sessions in results (default false).",
     )
+    team: Optional[str] = Field(
+        default=None,
+        description="Team name to list sessions from (e.g. 'mazuta-erp'). "
+                    "Omit to list your personal sessions.",
+        max_length=80,
+    )
 
 
 class SessionSearchInput(BaseModel):
@@ -107,6 +119,11 @@ class SessionSearchInput(BaseModel):
     query: str = Field(
         ..., description="Keyword to search across title, context, notes, and tags.",
         min_length=1,
+    )
+    team: Optional[str] = Field(
+        default=None,
+        description="Team name to scope the search to. Omit to search personal sessions.",
+        max_length=80,
     )
 
 
