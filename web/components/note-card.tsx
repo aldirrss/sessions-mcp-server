@@ -19,7 +19,7 @@ function isExpandable(content: string) {
   return content.length > EXPANDABLE_THRESHOLD || content.split('\n').length > 2
 }
 
-export default function NoteCard({ content, source, created_at, pinned = false, onTogglePin, togglingPin }: NoteCardProps) {
+export default function NoteCard({ id, content, source, created_at, pinned = false, onTogglePin, togglingPin }: NoteCardProps) {
   const [open, setOpen] = useState(false)
   const expandable = isExpandable(content)
 
