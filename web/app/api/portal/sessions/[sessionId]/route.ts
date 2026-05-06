@@ -32,7 +32,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     FROM notes WHERE session_id = ${sessionId}
     ORDER BY pinned DESC, created_at ASC
   `
-  return NextResponse.json({ ...row, notes })
+  const skills = await sql`
+    SELECT ss.skill_slug, s.name, s.category, ss.used_at
+    FROM session_skills ss
+    LEFT JOIN skills s ON s.slug = ss.skill_slug
+    WHERE ss.session_id = ${sessionId}
+    ORDER BY ss.used_at ASC
+  `
+  return NextResponse.json({ ...row, notes, skills })
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
