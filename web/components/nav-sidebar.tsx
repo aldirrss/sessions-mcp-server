@@ -1,8 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, MessageSquare, BookOpen, Settings2, Users, LogOut } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, BookOpen, Settings2, Users, LogOut, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 const navItems = [
@@ -15,17 +16,23 @@ const navItems = [
 
 export default function NavSidebar() {
   const pathname = usePathname()
+  const [open, setOpen] = useState(false)
 
   async function handleLogout() {
     await fetch('/panel/api/auth/logout', { method: 'POST' })
     window.location.href = '/panel/mcp-admin/login'
   }
 
-  return (
-    <aside className="fixed inset-y-0 left-0 w-60 bg-white border-r border-gray-200 flex flex-col z-10">
-      <div className="px-5 py-5 border-b border-gray-100">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">MCP Admin</p>
-        <p className="text-sm font-semibold text-gray-900 mt-0.5">lm-mcp-ai</p>
+  const sidebarContent = (
+    <>
+      <div className="px-5 py-5 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">MCP Admin</p>
+          <p className="text-sm font-semibold text-gray-900 mt-0.5">lm-mcp-ai</p>
+        </div>
+        <button onClick={() => setOpen(false)} className="md:hidden p-1 rounded-lg text-gray-400 hover:text-gray-600">
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5">
@@ -35,6 +42,7 @@ export default function NavSidebar() {
             <Link
               key={href}
               href={href}
+              onClick={() => setOpen(false)}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                 active
@@ -58,6 +66,38 @@ export default function NavSidebar() {
           Sign out
         </button>
       </div>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 flex items-center gap-3 px-4 py-3">
+        <button onClick={() => setOpen(true)} className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100">
+          <Menu className="w-5 h-5" />
+        </button>
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider leading-none">MCP Admin</p>
+          <p className="text-sm font-semibold text-gray-900">lm-mcp-ai</p>
+        </div>
+      </div>
+
+      {/* Mobile backdrop */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — always visible on desktop, slide-in on mobile */}
+      <aside className={cn(
+        'fixed inset-y-0 left-0 w-60 bg-white border-r border-gray-200 flex flex-col z-40 transition-transform duration-200',
+        'md:translate-x-0',
+        open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      )}>
+        {sidebarContent}
+      </aside>
+    </>
   )
 }

@@ -69,7 +69,7 @@ export default function SessionsPage() {
   const totalPages = Math.ceil(total / 20)
 
   return (
-    <div className="max-w-5xl space-y-5">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sessions</h1>

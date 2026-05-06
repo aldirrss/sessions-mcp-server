@@ -86,7 +86,7 @@ export default function SkillImportPage() {
 
   if (result) {
     return (
-      <div className="max-w-xl space-y-6">
+      <div className="space-y-6">
         <Link href="/mcp-admin/skills" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
           <ArrowLeft className="w-4 h-4" /> Skills
         </Link>
@@ -119,7 +119,7 @@ export default function SkillImportPage() {
   }
 
   return (
-    <div className="max-w-4xl space-y-5">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/mcp-admin/skills" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
