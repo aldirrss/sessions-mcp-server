@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Search, ChevronDown, ChevronUp, LogOut, Key } from 'lucide-react'
-import Link from 'next/link'
+import { BookOpen, Search, ChevronDown, ChevronUp } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
+import UserPortalHeader from '@/components/user-portal-header'
 
 type Skill = {
   slug: string; name: string; summary: string
@@ -28,7 +28,7 @@ function SkillCard({ skill }: { skill: Skill }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      <button onClick={toggle} className="w-full text-left p-5 flex items-start justify-between gap-4 hover:bg-gray-50 transition-colors">
+      <button onClick={toggle} className="w-full text-left p-4 md:p-5 flex items-start justify-between gap-4 hover:bg-gray-50 transition-colors">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="text-sm font-semibold text-gray-900">{skill.name}</span>
@@ -50,7 +50,7 @@ function SkillCard({ skill }: { skill: Skill }) {
       </button>
 
       {open && (
-        <div className="border-t border-gray-100 px-5 py-4">
+        <div className="border-t border-gray-100 px-4 md:px-5 py-4">
           {loading
             ? <p className="text-sm text-gray-400">Loading…</p>
             : <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono bg-gray-50 rounded-xl p-4 overflow-x-auto max-h-96">{content}</pre>
@@ -81,42 +81,11 @@ export default function UserSkillsPage() {
     return () => clearTimeout(t)
   }, [fetchSkills])
 
-  async function handleLogout() {
-    await fetch(`${API_BASE}/auth/user-logout`, { method: 'POST' })
-    window.location.href = '/panel/mcp-user/login'
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center">
-              <BookOpen className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold text-gray-900">Skill Library</h1>
-              <p className="text-xs text-gray-500">Global skills available to all users</p>
-            </div>
-          </div>
-          <nav className="flex items-center gap-1">
-            <Link href="/mcp-user/portal"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-              <Key className="w-3.5 h-3.5" /> Tokens
-            </Link>
-            <Link href="/mcp-user/skills"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-100 text-gray-900 rounded-lg font-medium">
-              <BookOpen className="w-3.5 h-3.5" /> Skills
-            </Link>
-          </nav>
-        </div>
-        <button onClick={handleLogout}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors">
-          <LogOut className="w-4 h-4" /> Sign out
-        </button>
-      </header>
+      <UserPortalHeader title="Skill Library" subtitle="Global skills available to all users" accentColor="bg-violet-600" />
 
-      <main className="max-w-3xl mx-auto p-6 space-y-5">
+      <main className="max-w-3xl mx-auto px-4 py-5 md:px-6 md:py-6 space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
