@@ -4,19 +4,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash, randomBytes } from 'crypto'
 import sql from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import { RegisterSchema } from '@/lib/schemas'
 
 export async function POST(req: NextRequest) {
-  const { username, email, password } = await req.json()
-
-  if (!username || !email || !password) {
-    return NextResponse.json({ error: 'username, email and password are required' }, { status: 400 })
+  const body = await req.json()
+  const parsed = RegisterSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? 'Invalid request' },
+      { status: 400 }
+    )
   }
-  if (password.length < 8) {
-    return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
-  }
 
-  const usernameClean = username.trim().toLowerCase()
-  const emailClean = email.trim().toLowerCase()
+  const usernameClean = parsed.data.username.trim().toLowerCase()
+  const emailClean = parsed.data.email.trim().toLowerCase()
+  const { password } = parsed.data
 
   const passwordHash = await bcrypt.hash(password, 12)
 

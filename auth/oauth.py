@@ -151,7 +151,7 @@ _PREAUTH_HTML = """<!DOCTYPE html>
   </div>
   <div class="scope-box">
     <strong>Permissions requested:</strong><br/>
-    Full MCP access (read + write sessions, skills, Docker management)
+    Full MCP access (read + write sessions, skills, config)
   </div>
   <form method="POST">
     <input type="hidden" name="client_id" value="{client_id}" />
@@ -187,7 +187,7 @@ _AUTHORIZE_HTML = """<!DOCTYPE html>
   {error_html}
   <div class="scope-box">
     <strong>Permissions requested:</strong><br/>
-    Full MCP access (read + write sessions, skills, Docker management)
+    Full MCP access (read + write sessions, skills, config)
   </div>
   <form method="POST" id="authForm">
     <input type="hidden" name="client_id" value="{client_id}" />
@@ -380,11 +380,16 @@ async def oauth_token(request: Request) -> JSONResponse:
     if not user:
         return JSONResponse({"error": "invalid_grant"}, status_code=400)
 
-    raw_token, _ = await create_token(user["id"], f"OAuth ({client_id[:20]})")
+    raw_token, _ = await create_token(
+        user["id"],
+        f"OAuth ({client_id[:20]})",
+        expires_days=config.TOKEN_TTL_DAYS,
+    )
 
     return JSONResponse({
         "access_token": raw_token,
         "token_type": "Bearer",
+        "expires_in": config.TOKEN_TTL_SECONDS,
         "scope": "mcp",
     })
 

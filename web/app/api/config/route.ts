@@ -2,8 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import sql from '@/lib/db'
+import { requireAdmin } from '@/lib/require-session'
 
 export async function GET(req: NextRequest) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard.error
+
   const prefix = req.nextUrl.searchParams.get('prefix') ?? ''
 
   const rows = prefix
@@ -14,6 +18,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard.error
+
   const body = await req.json()
   const { key, value, description = '' } = body
 

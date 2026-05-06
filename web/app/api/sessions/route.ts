@@ -2,8 +2,12 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import sql from '@/lib/db'
+import { requireAdmin } from '@/lib/require-session'
 
 export async function GET(req: NextRequest) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard.error
+
   const { searchParams } = req.nextUrl
   const search = searchParams.get('search') ?? ''
   const source = searchParams.get('source') ?? ''
@@ -40,6 +44,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requireAdmin()
+  if ('error' in guard) return guard.error
+
   const { session_id, title, context, source, tags } = await req.json()
 
   if (!session_id || !title) {

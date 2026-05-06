@@ -12,8 +12,37 @@ from typing import Optional
 import asyncpg
 
 import db
+from auth.context import get_current_user
 
 _logger = logging.getLogger("lm-mcp-ai.session")
+
+
+def _current_user_id() -> Optional[str]:
+    """Return UUID of the authenticated user, or None for admin/master-key access."""
+    user = get_current_user()
+    if user is None:
+        return None
+    return user.get("id")  # None when authenticated via master key (admin)
+
+
+async def _has_session_access(conn: asyncpg.Connection, session_id: str, user_id: Optional[str]) -> bool:
+    """Return True if user_id may read/write this session.
+
+    Admin (user_id=None) always has access.
+    Regular users may access sessions they own or sessions with no owner (legacy).
+    """
+    if user_id is None:
+        return True
+    result = await conn.fetchval(
+        """
+        SELECT 1 FROM sessions
+        WHERE session_id = $1
+          AND (owner_id = $2::uuid OR owner_id IS NULL)
+        """,
+        session_id,
+        user_id,
+    )
+    return result is not None
 
 
 def _session_row(row: asyncpg.Record, notes: list[dict] | None = None) -> dict:
@@ -43,9 +72,13 @@ def _note_row(row: asyncpg.Record) -> dict:
 
 
 async def read_session(session_id: str) -> Optional[dict]:
-    """Return full session with all notes (pinned first), or None if not found."""
+    """Return full session with all notes (pinned first), or None if not found or not accessible."""
     pool = await db.get_pool()
+    user_id = _current_user_id()
     async with pool.acquire() as conn:
+        if not await _has_session_access(conn, session_id, user_id):
+            return None
+
         row = await conn.fetchrow(
             "SELECT * FROM sessions WHERE session_id = $1",
             session_id,
@@ -73,20 +106,21 @@ async def write_session(
     """
     pool = await db.get_pool()
     tags_val = tags or []
+    user_id = _current_user_id()
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO sessions (session_id, title, context, source, tags)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO sessions (session_id, title, context, source, tags, owner_id)
+            VALUES ($1, $2, $3, $4, $5, $6::uuid)
             ON CONFLICT (session_id) DO UPDATE
-                SET title   = EXCLUDED.title,
-                    context = EXCLUDED.context,
-                    source  = EXCLUDED.source,
-                    tags    = EXCLUDED.tags
+                SET title    = EXCLUDED.title,
+                    context  = EXCLUDED.context,
+                    source   = EXCLUDED.source,
+                    tags     = EXCLUDED.tags
             RETURNING *
             """,
-            session_id, title, context, source, tags_val,
+            session_id, title, context, source, tags_val, user_id,
         )
         note_rows = await conn.fetch(
             "SELECT * FROM notes WHERE session_id = $1 ORDER BY created_at ASC",
@@ -102,9 +136,13 @@ async def append_note(session_id: str, content: str, source: str = "unknown") ->
     Raises FileNotFoundError if the session does not exist.
     """
     pool = await db.get_pool()
+    user_id = _current_user_id()
 
     async with pool.acquire() as conn:
         async with conn.transaction():
+            if not await _has_session_access(conn, session_id, user_id):
+                raise PermissionError(f"Access denied to session '{session_id}'.")
+
             exists = await conn.fetchval(
                 "SELECT 1 FROM sessions WHERE session_id = $1",
                 session_id,
@@ -149,8 +187,12 @@ async def compact_session(session_id: str, before_days: int = 30) -> dict:
     Raises FileNotFoundError if session not found.
     """
     pool = await db.get_pool()
+    user_id = _current_user_id()
     async with pool.acquire() as conn:
         async with conn.transaction():
+            if not await _has_session_access(conn, session_id, user_id):
+                raise PermissionError(f"Access denied to session '{session_id}'.")
+
             session = await conn.fetchrow(
                 "SELECT * FROM sessions WHERE session_id = $1",
                 session_id,
@@ -209,9 +251,12 @@ async def compact_session(session_id: str, before_days: int = 30) -> dict:
 
 
 async def set_session_pinned(session_id: str, pinned: bool) -> bool:
-    """Set pinned flag on a session. Returns True if found."""
+    """Set pinned flag on a session. Returns True if found and accessible."""
     pool = await db.get_pool()
+    user_id = _current_user_id()
     async with pool.acquire() as conn:
+        if not await _has_session_access(conn, session_id, user_id):
+            return False
         result = await conn.execute(
             "UPDATE sessions SET pinned = $1, updated_at = NOW() WHERE session_id = $2",
             pinned, session_id,
@@ -220,9 +265,12 @@ async def set_session_pinned(session_id: str, pinned: bool) -> bool:
 
 
 async def set_session_archived(session_id: str, archived: bool) -> bool:
-    """Set archived flag on a session. Returns True if found."""
+    """Set archived flag on a session. Returns True if found and accessible."""
     pool = await db.get_pool()
+    user_id = _current_user_id()
     async with pool.acquire() as conn:
+        if not await _has_session_access(conn, session_id, user_id):
+            return False
         result = await conn.execute(
             "UPDATE sessions SET archived = $1, updated_at = NOW() WHERE session_id = $2",
             archived, session_id,
@@ -236,6 +284,7 @@ async def list_sessions(tag: str | None = None, show_archived: bool = False) -> 
     Pass tag to filter by a specific tag value (exact match, case-sensitive).
     """
     pool = await db.get_pool()
+    user_id = _current_user_id()
 
     base_query = """
         SELECT
@@ -256,12 +305,15 @@ async def list_sessions(tag: str | None = None, show_archived: bool = False) -> 
 
     async with pool.acquire() as conn:
         conditions = []
-        args = []
+        args: list = []
         if not show_archived:
             conditions.append("s.archived = false")
         if tag:
             args.append(tag)
-            conditions.append(f"$1 = ANY(s.tags)")
+            conditions.append(f"${len(args)} = ANY(s.tags)")
+        if user_id is not None:
+            args.append(user_id)
+            conditions.append(f"(s.owner_id = ${len(args)}::uuid OR s.owner_id IS NULL)")
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         rows = await conn.fetch(base_query.format(where=where_clause), *args)
 
@@ -283,7 +335,10 @@ async def list_sessions(tag: str | None = None, show_archived: bool = False) -> 
 async def delete_session(session_id: str) -> bool:
     """Delete a session and all its notes (CASCADE). Returns True if deleted."""
     pool = await db.get_pool()
+    user_id = _current_user_id()
     async with pool.acquire() as conn:
+        if not await _has_session_access(conn, session_id, user_id):
+            return False
         result = await conn.execute(
             "DELETE FROM sessions WHERE session_id = $1",
             session_id,
@@ -295,12 +350,20 @@ async def search_sessions(query: str) -> list[dict]:
     """
     Search sessions using PostgreSQL full-text search (tsvector) with ILIKE fallback.
     Searches across title, context, tags, and note content.
+    Results are scoped to the current user (admin sees all).
     """
     pool = await db.get_pool()
+    user_id = _current_user_id()
+    ownership_clause = (
+        "AND (s.owner_id = $3::uuid OR s.owner_id IS NULL)" if user_id is not None else ""
+    )
 
     async with pool.acquire() as conn:
+        args = [query, f"%{query}%"]
+        if user_id is not None:
+            args.append(user_id)
         rows = await conn.fetch(
-            """
+            f"""
             SELECT DISTINCT ON (s.session_id)
                 s.session_id,
                 s.title,
@@ -312,16 +375,17 @@ async def search_sessions(query: str) -> list[dict]:
                 ) AS rank
             FROM sessions s
             LEFT JOIN notes n ON n.session_id = s.session_id
-            WHERE
+            WHERE (
                 s.search_vec @@ plainto_tsquery('english', $1)
                 OR s.title ILIKE $2
                 OR s.context ILIKE $2
                 OR n.content ILIKE $2
                 OR $1 = ANY(s.tags)
+            )
+            {ownership_clause}
             ORDER BY s.session_id, rank DESC, s.updated_at DESC
             """,
-            query,
-            f"%{query}%",
+            *args,
         )
 
     sorted_rows = sorted(rows, key=lambda r: (-r["rank"], r["updated_at"]))

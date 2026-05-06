@@ -1,7 +1,7 @@
 # lm-mcp-ai — Claude Behavior Instructions
 
-This project uses a custom MCP server (`lm-mcp-ai`) that provides Docker management
-and session continuity tools. Follow the rules below in every conversation.
+This project uses a custom MCP server (`lm-mcp-ai`) that provides session continuity,
+skill library, and config management tools. Follow the rules below in every conversation.
 
 ---
 
@@ -39,7 +39,7 @@ Whenever you invoke a skill (`/skill-name`), immediately call `skill_track` with
 
 ### Rules
 - Track every skill invocation, including: `/mcp-builder`, `/brainstorming`,
-  `/docker`, `/postgresql-best-practices`, `/python`, `/ci-cd-best-practices`, etc.
+  `/postgresql-best-practices`, `/python`, `/ci-cd-best-practices`, etc.
 - First use of a skill in a session → `skill_track` auto-appends a compact note.
   You do NOT need to manually append a note for skill activation.
 - Subsequent uses of the same skill in the same session → silently idempotent,
@@ -72,14 +72,6 @@ use `skill_search` or `skill_list` instead of relying on memory.
 ---
 
 ## MCP Server Tools Reference
-
-### Docker (read-only)
-`docker_list_stacks`, `docker_stack_ps`, `docker_stack_logs`,
-`docker_list_containers`, `docker_inspect_container`, `docker_stats`
-
-### Docker (write)
-`docker_stack_up`, `docker_stack_down`, `docker_stack_restart`,
-`docker_stack_pull`, `docker_exec`
 
 ### Sessions
 `session_write`, `session_read`, `session_list`, `session_append`,

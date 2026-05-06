@@ -83,7 +83,7 @@ export default function SkillsPage() {
           <p className="text-sm text-gray-500 mt-0.5">{total} skills in library</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/mcp-admin/skills/import"
+          <Link href="/panel/mcp-admin/skills/import"
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">
             <Upload className="w-4 h-4" /> Import .md
           </Link>

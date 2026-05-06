@@ -2,9 +2,8 @@
 
 A self-hosted **MCP (Model Context Protocol) server** running in Docker on a VPS.
 Connects **claude.ai Web**, **Claude Code CLI**, and **VSCode** to a shared backend —
-providing Docker stack management, persistent session memory, a skill library,
-GitHub integration, dynamic configuration, and automated data retention,
-all backed by PostgreSQL.
+providing persistent session memory, a skill library, GitHub integration, dynamic
+configuration, and automated data retention, all backed by PostgreSQL.
 
 ---
 
@@ -42,7 +41,7 @@ all backed by PostgreSQL.
 │          ┌───────────────┴──────────────────────┐               │
 │          ▼  :8765                                ▼  :3100        │
 │  ┌───────────────────────────┐  ┌───────────────────────────┐   │
-│  │  lm-mcp-ai (FastMCP)      │  │  lm-mcp-web (Next.js 15)  │   │
+│  │  lema-mcp-ai (FastMCP)     │  │  lema-mcp-web (Next.js 15) │   │
 │  │  /mcp  /oauth/*           │  │  /panel/mcp-admin/*       │   │
 │  │  /.well-known/*           │  │  /panel/mcp-user/*        │   │
 │  └──────────────┬────────────┘  └──────────────┬────────────┘   │
@@ -51,12 +50,7 @@ all backed by PostgreSQL.
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │  PostgreSQL 15  (127.0.0.1:15432)                       │    │
 │  │  sessions · notes · skills · skill_versions             │    │
-│  │  session_skills · config · users                        │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  Docker Engine (VPS host)  /opt/stacks/                 │    │
-│  │    ├── odoo/     ├── monitoring/     └── ...            │    │
+│  │  session_skills · config · users · user_tokens          │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -65,9 +59,9 @@ all backed by PostgreSQL.
 
 | Container | Image | Port (loopback) | Purpose |
 |-----------|-------|-----------------|---------|
-| `lm-mcp-postgres` | `postgres:15` | `127.0.0.1:15432` | Database |
-| `lm-mcp-ai` | custom (Python) | `127.0.0.1:8765` | MCP server + OAuth AS |
-| `lm-mcp-web` | custom (Next.js) | `127.0.0.1:3100` | Web panel |
+| `lema-mcp-postgres` | `postgres:15` | `127.0.0.1:15432` | Database |
+| `lema-mcp-ai` | custom (Python) | `127.0.0.1:8765` | MCP server + OAuth AS |
+| `lema-mcp-web` | custom (Next.js) | `127.0.0.1:3100` | Web panel |
 
 ---
 
@@ -98,73 +92,74 @@ sudo usermod -aG docker $USER && newgrp docker
 ### 2. Clone the repository
 
 ```bash
-git clone https://github.com/aldirrss/lm-mcp-ai.git /opt/lm-mcp-ai
+git clone https://github.com/aldirrss/sessions-mcp-server.git /opt/lm-mcp-ai
 cd /opt/lm-mcp-ai
 ```
 
-### 3. Find your Docker group GID
+### 3. Configure environment
 
 ```bash
-stat -c '%g' /var/run/docker.sock   # e.g. 988
+cp web/.env.example web/.env
 ```
 
-### 4. Configure environment
+Generate all required secret values:
 
 ```bash
-cp .env.example .env
+# SESSION_SECRET — cookie encryption key
+openssl rand -hex 32
+
+# POSTGRES_PASSWORD
+openssl rand -hex 24
+
+# ADMIN_PASSWORD_HASH — bcrypt hash of your admin password
+node -e "require('bcryptjs').hash('your-strong-password', 12).then(console.log)"
 ```
 
-Generate secret values:
+Edit `web/.env` with the generated values (see [Environment Variables](#environment-variables) below).
 
-```bash
-python3 -c "import secrets; print(secrets.token_hex(32))"   # SESSION_SECRET
-python3 -c "import secrets; print(secrets.token_hex(24))"   # POSTGRES_PASSWORD
-```
-
-Edit `.env` with at minimum the required variables (see table below).
-
-### 5. Build and start
+### 4. Build and start
 
 ```bash
 docker compose up -d --build
 docker compose ps
 # Expected:
-#   lm-mcp-postgres   Up (healthy)
-#   lm-mcp-ai         Up
-#   lm-mcp-web        Up
+#   lema-mcp-postgres   Up (healthy)
+#   lema-mcp-ai         Up
+#   lema-mcp-web        Up
 ```
 
 ---
 
 ## Environment Variables
 
-### Required
+### MCP Server
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string: `postgresql://user:pass@host:5432/db` |
-| `MCP_EXTERNAL_URL` | Public base URL of the server, e.g. `https://mcp.example.com` |
-| `SESSION_SECRET` | Cookie encryption key, minimum 32 characters |
-| `ADMIN_USER` | Admin username for the web panel |
-| `ADMIN_PASSWORD` | Admin password for the web panel |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | ✅ | — | PostgreSQL DSN: `postgresql://user:pass@host:5432/db` |
+| `MCP_EXTERNAL_URL` | ✅ | — | Public base URL, e.g. `https://mcp.example.com` |
+| `MCP_API_KEY` | — | — | Master key fallback for Bearer auth (admin access) |
+| `MCP_HOST` | — | `0.0.0.0` | Bind address inside the container |
+| `MCP_PORT` | — | `8765` | Port inside the container |
+| `MCP_EXTERNAL_HOST` | — | — | External hostname (derived from `MCP_EXTERNAL_URL` if unset) |
+| `MCP_ALLOWED_ORIGINS` | — | — | Comma-separated extra hostnames allowed by transport security (in addition to `MCP_EXTERNAL_URL` hostname, `localhost`, and `127.0.0.1`) |
+| `TOKEN_TTL_DAYS` | — | `30` | OAuth access token lifetime in days |
+| `GITHUB_TOKEN` | — | — | Fallback GitHub PAT when a user has no personal token set |
 
-### Optional
+### Web Panel
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | ✅ | — | Same PostgreSQL DSN as above |
+| `SESSION_SECRET` | ✅ | — | Cookie encryption key, minimum 32 characters |
+| `ADMIN_USER` | ✅ | — | Admin username for the web panel |
+| `ADMIN_PASSWORD_HASH` | ✅ | — | bcrypt hash of the admin password. Generate with: `node -e "require('bcryptjs').hash('yourpass', 12).then(console.log)"` |
+
+### PostgreSQL (bundled container)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MCP_API_KEY` | — | Master key fallback for Bearer auth (any user) |
-| `MCP_HOST` | `0.0.0.0` | Bind address inside the container |
-| `MCP_PORT` | `8765` | Port inside the container |
-| `COMPOSE_BASE_DIR` | `/opt/stacks` | Root directory containing Compose project subdirectories |
-| `LOG_MAX_LINES` | `200` | Hard cap on log lines returned per request |
-| `DOCKER_TIMEOUT` | `60` | Docker CLI subprocess timeout in seconds |
-| `GITHUB_TOKEN` | — | Fallback GitHub PAT when a user has no personal token set |
-
-### PostgreSQL (when running the bundled container)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `POSTGRES_PASSWORD` | — | Database password |
+| `POSTGRES_PASSWORD` | — | Database password (required) |
 | `POSTGRES_DB` | `mcp_sessions` | Database name |
 | `POSTGRES_USER` | `mcp_user` | Database user |
 | `POSTGRES_HOST_PORT` | `15432` | Host-side port for SSH tunnel or pgAdmin |
@@ -173,7 +168,8 @@ docker compose ps
 
 ## Reverse Proxy Setup
 
-All traffic must reach the server over HTTPS. nginx must rewrite the `Host` header to `localhost` for the `/mcp` location — required by FastMCP's transport security.
+All traffic must reach the server over HTTPS. The MCP server validates the `Host` header
+against an allowlist derived from `MCP_EXTERNAL_URL`. Set the header correctly in your proxy:
 
 ```nginx
 server {
@@ -184,8 +180,9 @@ server {
     location ~ ^/(mcp|oauth|\.well-known) {
         proxy_pass         http://127.0.0.1:8765;
         proxy_http_version 1.1;
-        proxy_set_header   Host "localhost";   # REQUIRED
+        proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header   Upgrade $http_upgrade;
         proxy_set_header   Connection "upgrade";
         proxy_read_timeout 300s;
@@ -197,12 +194,13 @@ server {
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
 
-> For Cloudflare DNS Proxy, use `listen 80;` and omit SSL directives.
-> For Cloudflare Tunnel, add `httpHostHeader: "localhost"` to the `/mcp` ingress rule.
+> **Cloudflare Tunnel:** use `listen 80;` and omit SSL directives. The `Host` header is
+> automatically forwarded as the public domain — no extra config needed.
 
 ---
 
@@ -218,28 +216,24 @@ Go to the registration page and create an account:
 https://mcp.example.com/panel/mcp-user/register
 ```
 
-Fill in **username**, **email**, and **password** (minimum 8 characters), then click **Create account**.
+Fill in **username** (lowercase, 3–50 chars), **email**, and **password** (minimum 8 characters).
 
 ### Step 2 — Save your token
 
 After registration, your first PAT is displayed **once** — copy it immediately.
 
-```
-lm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-> This token cannot be retrieved again. If lost, create a new one from the portal.
+> This token cannot be retrieved again. If lost, log in to the portal and create a new one.
 
 ### Step 3 — Connect a client
 
 Use the token as a Bearer header in your MCP client (see [Connecting Clients](#connecting-clients) below).
 
-### Managing tokens later
+### Managing tokens
 
 Log in to the portal to create additional tokens, revoke old ones, or set your GitHub PAT:
 
 ```
-https://mcp.example.com/panel/mcp-user/login
+https://mcp.example.com/panel/mcp-user/portal
 ```
 
 ---
@@ -249,13 +243,14 @@ https://mcp.example.com/panel/mcp-user/login
 ### OAuth auto-discovery (claude.ai / VSCode)
 
 The server exposes `/.well-known/oauth-authorization-server` and supports PKCE S256.
-Clients that support OAuth 2.0 auto-discovery will find the authorization endpoint automatically when pointed at `https://mcp.example.com/mcp`.
+Clients that support OAuth 2.0 auto-discovery will find the authorization endpoint
+automatically when pointed at `https://mcp.example.com/mcp`.
 
 OAuth login page: `https://mcp.example.com/oauth/authorize`
 
 ### Bearer token (PAT)
 
-Users create personal access tokens in the user portal (`/panel/mcp-user/portal`).
+Users create personal access tokens from the user portal (`/panel/mcp-user/portal`).
 Tokens are stored as SHA-256 hashes and sent as `Authorization: Bearer <token>`.
 
 ### claude.ai Web (manual key)
@@ -263,7 +258,7 @@ Tokens are stored as SHA-256 hashes and sent as `Authorization: Bearer <token>`.
 1. Go to **Settings → Connectors → Add custom connector**
 2. Set the URL to: `https://mcp.example.com/mcp?key=YOUR_TOKEN`
 
-> The `?key=` parameter is accepted as a Bearer token equivalent.
+> The `?key=` query parameter is accepted as a Bearer token equivalent.
 
 ### Claude Code CLI
 
@@ -306,13 +301,14 @@ curl -s -X POST "https://mcp.example.com/mcp" \
 | URL | Description |
 |-----|-------------|
 | `https://mcp.example.com/` | Redirect to user login |
-| `https://mcp.example.com/mcp` | MCP endpoint (Bearer auth) |
+| `https://mcp.example.com/mcp` | MCP endpoint (Bearer auth required) |
 | `https://mcp.example.com/oauth/authorize` | OAuth login page |
 | `https://mcp.example.com/.well-known/oauth-authorization-server` | OAuth AS metadata |
+| `https://mcp.example.com/.well-known/oauth-protected-resource` | OAuth resource metadata |
 | `https://mcp.example.com/panel/mcp-user/login` | User login |
 | `https://mcp.example.com/panel/mcp-user/register` | User registration |
-| `https://mcp.example.com/panel/mcp-user/portal` | Token management (user) |
-| `https://mcp.example.com/panel/mcp-user/skills` | Global skills browser (user) |
+| `https://mcp.example.com/panel/mcp-user/portal` | Token management |
+| `https://mcp.example.com/panel/mcp-user/skills` | Global skills browser |
 | `https://mcp.example.com/panel/mcp-admin/login` | Admin login |
 | `https://mcp.example.com/panel/mcp-admin` | Admin dashboard |
 
@@ -320,29 +316,9 @@ curl -s -X POST "https://mcp.example.com/mcp" \
 
 ## Tools Reference
 
-Tools are grouped into 7 categories. See each category's `README.md` under `tools/` for full parameter documentation.
-
-### Docker (11 tools)
-
-> [`tools/docker/README.md`](tools/docker/README.md)
-
-| Tool | Type | Description |
-|------|------|-------------|
-| `docker_list_stacks` | read | List all Compose stacks under `COMPOSE_BASE_DIR` |
-| `docker_stack_ps` | read | Container state within a stack |
-| `docker_stack_logs` | read | Recent log output from a stack or service |
-| `docker_list_containers` | read | All containers on the host |
-| `docker_inspect_container` | read | Full `docker inspect` JSON |
-| `docker_stats` | read | CPU/memory/network snapshot |
-| `docker_stack_up` | write | Start a stack or service |
-| `docker_stack_down` | write | Stop and remove containers |
-| `docker_stack_restart` | write | Restart a stack or service |
-| `docker_stack_pull` | write | Pull latest images |
-| `docker_exec` | write | Execute a command inside a container |
+Tools are grouped into 6 categories.
 
 ### Sessions (13 tools)
-
-> [`tools/sessions/README.md`](tools/sessions/README.md)
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -357,12 +333,14 @@ Tools are grouped into 7 categories. See each category's `README.md` under `tool
 | `session_unpin` | write | Remove protection from a session |
 | `session_archive` | write | Soft-delete a session |
 | `session_restore` | write | Restore an archived session |
-| `note_pin` | write | Pin a note (always at top, never vacuumed) |
-| `note_unpin` | write | Remove pin from a note |
+| `note_pin` | write | Pin a note (always visible, never vacuumed) |
+| `note_unpin` | write | Unpin a note |
+
+> **User isolation:** each authenticated user only sees their own sessions.
+> Sessions created before isolation was introduced (no `owner_id`) remain visible to all users.
+> Admin access (master key) bypasses isolation and sees all sessions.
 
 ### Skills (11 tools)
-
-> [`tools/skills/README.md`](tools/skills/README.md)
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -380,8 +358,6 @@ Tools are grouped into 7 categories. See each category's `README.md` under `tool
 
 ### GitHub Integration (3 tools)
 
-> [`tools/github/README.md`](tools/github/README.md)
-
 | Tool | Type | Description |
 |------|------|-------------|
 | `session_link_repo` | write | Link a GitHub repo URL to a session |
@@ -389,8 +365,6 @@ Tools are grouped into 7 categories. See each category's `README.md` under `tool
 | `repo_get_context` | read | Fetch default branch, recent commits, and open PRs |
 
 ### Config (4 tools)
-
-> [`tools/config/README.md`](tools/config/README.md)
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -401,8 +375,6 @@ Tools are grouped into 7 categories. See each category's `README.md` under `tool
 
 ### Vacuum (1 tool)
 
-> [`tools/vacuum/README.md`](tools/vacuum/README.md)
-
 | Tool | Type | Description |
 |------|------|-------------|
 | `vacuum_run` | write | Clean up old notes and archive/delete inactive sessions |
@@ -412,7 +384,7 @@ Tools are grouped into 7 categories. See each category's `README.md` under `tool
 | Tool | Type | Description |
 |------|------|-------------|
 | `user_me` | read | Return the currently authenticated user |
-| `token_create` | write | Create a new personal access token for the current user |
+| `token_create` | write | Create a new personal access token |
 | `token_list` | read | List all active tokens for the current user |
 | `token_revoke` | write | Revoke a token by ID |
 | `user_list` | read | List all users (admin only) |
@@ -423,12 +395,14 @@ Tools are grouped into 7 categories. See each category's `README.md` under `tool
 
 ## Web Panel
 
-The web panel has two sections served under `/panel`:
+The web panel has two sections served under `/panel`.
 
 ### Admin (`/panel/mcp-admin/*`)
 
-Full management interface — sessions, skills, config, notes, and import.
-Requires admin credentials set via `ADMIN_USER` / `ADMIN_PASSWORD`.
+Full management interface for sessions, skills, config, and users.
+Login requires `ADMIN_USER` + `ADMIN_PASSWORD_HASH` credentials.
+All admin API routes are protected by a server-side session guard — unauthenticated
+requests return `401 Unauthorized`.
 
 | Page | Path | Description |
 |------|------|-------------|
@@ -436,12 +410,13 @@ Requires admin credentials set via `ADMIN_USER` / `ADMIN_PASSWORD`.
 | Sessions | `/panel/mcp-admin/sessions` | List, search, filter (including archived) |
 | Session Detail | `/panel/mcp-admin/sessions/:id` | Edit, pin, archive, link GitHub repo, manage notes |
 | Skills | `/panel/mcp-admin/skills` | List, search, create skills |
-| Skill Import | `/panel/mcp-admin/skills/import` | Drag & drop .md files, preview before confirm |
+| Skill Import | `/panel/mcp-admin/skills/import` | Drag & drop `.md` files, preview before confirm |
+| Users | `/panel/mcp-admin/users` | List users, promote/demote, activate/deactivate |
 | Config | `/panel/mcp-admin/config` | CRUD for config key-value store |
 
 ### User Portal (`/panel/mcp-user/*`)
 
-Self-service interface for registered users — token management and global skills.
+Self-service interface for registered users.
 
 | Page | Path | Description |
 |------|------|-------------|
@@ -449,8 +424,6 @@ Self-service interface for registered users — token management and global skil
 | Register | `/panel/mcp-user/register` | User registration |
 | Portal | `/panel/mcp-user/portal` | Create, list, and revoke personal access tokens; set GitHub PAT |
 | Skills | `/panel/mcp-user/skills` | Browse global skills |
-
-> See [`web/README.md`](web/README.md) for full web panel documentation.
 
 ---
 
@@ -494,12 +467,18 @@ vacuum_run(dry_run=false)   # execute
 | Measure | Detail |
 |---------|--------|
 | OAuth 2.0 AS (PKCE S256) | Standard authorization code flow for VSCode, CLI, and claude.ai |
+| OAuth token TTL | Access tokens expire after `TOKEN_TTL_DAYS` days (default 30); `expires_in` included in token response (RFC 6749) |
 | Per-user Bearer tokens (PAT) | Stored as SHA-256 hash; never logged or returned after creation |
+| Admin password hashing | Admin login uses bcrypt (`ADMIN_PASSWORD_HASH`); plain-text passwords not accepted |
+| Admin login rate limiting | Max 5 failed attempts per IP per 15 minutes; returns `429 Too Many Requests` |
+| Admin API auth guard | All `/api/*` admin routes require a valid admin session; unauthenticated requests return `401` |
+| Transport security | MCP `Host`/`Origin` headers validated against an allowlist derived from `MCP_EXTERNAL_URL` (+ optional `MCP_ALLOWED_ORIGINS`); unknown hosts return `403` |
+| User isolation | Sessions are scoped to `owner_id`; users cannot read or modify each other's sessions |
+| Input validation | All API route inputs validated with Zod schemas (login, register, token creation, user management) |
 | Roles | `user` (portal access) and `admin` (full panel); enforced on all routes |
-| Master key fallback | `MCP_API_KEY` env var accepted as a valid Bearer token for any user |
-| No shell injection | All subprocess calls use `asyncio.create_subprocess_exec` — no `shell=True` |
-| Path traversal prevention | All Compose paths validated to stay within `COMPOSE_BASE_DIR` |
-| Pydantic validation | All tool inputs validated with regex, length limits, and type checks |
+| Master key fallback | `MCP_API_KEY` env var accepted as admin Bearer token for emergency access |
 | Non-root container | MCP process runs as `mcpuser` (UID 1000) |
 | Loopback binding | Ports 8765, 3100, and 15432 bound to `127.0.0.1` — not internet-exposed |
-| Web session cookie | `lm_oauth_session` encrypted via `iron-session`; 7-day expiry |
+| No shell injection | All subprocess calls use `asyncio.create_subprocess_exec` — no `shell=True` |
+| Pydantic validation | All MCP tool inputs validated with type checks, regex, and length limits |
+| Web session cookie | `lm-session` encrypted via `iron-session`; 8-hour expiry; `httpOnly`, `SameSite=lax`, `Secure` in production |
