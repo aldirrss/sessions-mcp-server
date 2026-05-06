@@ -29,7 +29,7 @@ export default function NavSidebar() {
       <div className="px-5 py-5 border-b border-gray-100 flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">MCP Admin</p>
-          <p className="text-sm font-semibold text-gray-900 mt-0.5">lm-mcp-ai</p>
+          <p className="text-sm font-semibold text-gray-900 mt-0.5">Sessions MCP Server</p>
         </div>
         <button onClick={() => setOpen(false)} className="md:hidden p-1 rounded-lg text-gray-400 hover:text-gray-600">
           <X className="w-5 h-5" />
@@ -79,7 +79,7 @@ export default function NavSidebar() {
         </button>
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider leading-none">MCP Admin</p>
-          <p className="text-sm font-semibold text-gray-900">lm-mcp-ai</p>
+          <p className="text-sm font-semibold text-gray-900">Sessions MCP Server</p>
         </div>
       </div>
 

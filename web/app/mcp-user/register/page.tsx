@@ -83,7 +83,7 @@ export default function RegisterPage() {
                     <span className="text-xs font-semibold text-gray-600">Claude Code CLI</span>
                   </div>
                   <code className="text-xs text-gray-700 font-mono break-all">
-                    claude mcp add lm-mcp-ai --transport http --url {mcpUrl} --header &quot;Authorization: Bearer {result.token}&quot;
+                    claude mcp add sessions-mcp-server --transport http --url {mcpUrl} --header &quot;Authorization: Bearer {result.token}&quot;
                   </code>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
@@ -94,7 +94,7 @@ export default function RegisterPage() {
                   <code className="text-xs text-gray-700 font-mono whitespace-pre">
 {`{
   "mcpServers": {
-    "lm-mcp-ai": {
+    "sessions-mcp-server": {
       "type": "http",
       "url": "${mcpUrl}",
       "headers": { "Authorization": "Bearer ${result.token}" }
@@ -130,7 +130,7 @@ export default function RegisterPage() {
             <UserPlus className="w-6 h-6 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Create Account</h1>
-          <p className="text-sm text-gray-500 mt-1">Get access to lm-mcp-ai</p>
+          <p className="text-sm text-gray-500 mt-1">Get access to Sessions MCP Server</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
