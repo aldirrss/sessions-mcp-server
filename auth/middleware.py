@@ -54,10 +54,8 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Per-user token from DB
-        from auth.store import validate_token, validate_team_token
+        from auth.store import validate_token
         user = await validate_token(token)
-        if not user:
-            user = await validate_team_token(token)
         if not user:
             return self._unauthorized()
 

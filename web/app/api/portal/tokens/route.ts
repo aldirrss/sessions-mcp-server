@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const userId = session.userId!
   const tokens = await sql`
-    SELECT id, name, last_used_at, expires_at, revoked, created_at
+    SELECT id, name, token_prefix, last_used_at, expires_at, revoked, created_at
     FROM user_tokens
     WHERE user_id = ${userId}
     ORDER BY created_at DESC
@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
 
   const rawToken = randomBytes(32).toString('hex')
   const tokenHash = createHash('sha256').update(rawToken).digest('hex')
+  const tokenPrefix = rawToken.slice(0, 8)
 
   const expiresAt = expires_days
     ? new Date(Date.now() + expires_days * 86400 * 1000).toISOString()
@@ -52,9 +53,9 @@ export async function POST(req: NextRequest) {
 
   const userId2 = session.userId!
   const [row] = await sql`
-    INSERT INTO user_tokens (user_id, token_hash, name, expires_at)
-    VALUES (${userId2}, ${tokenHash}, ${name}, ${expiresAt})
-    RETURNING id, name, expires_at, created_at
+    INSERT INTO user_tokens (user_id, token_hash, token_prefix, name, expires_at)
+    VALUES (${userId2}, ${tokenHash}, ${tokenPrefix}, ${name}, ${expiresAt})
+    RETURNING id, name, token_prefix, expires_at, created_at
   `
 
   return NextResponse.json({ token: rawToken, record: row })

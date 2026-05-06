@@ -217,32 +217,6 @@ async def validate_token(raw: str) -> Optional[dict]:
     }
 
 
-async def validate_team_token(raw: str) -> Optional[dict]:
-    """Validate a team token. Returns team context dict on success, None on failure."""
-    token_hash = _hash_token(raw)
-    pool = await db.get_pool()
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT tt.id, tt.team_id, tt.revoked, t.name AS team_name
-            FROM team_tokens tt
-            JOIN teams t ON t.id = tt.team_id
-            WHERE tt.token_hash = $1
-            """,
-            token_hash,
-        )
-        if row is None or row["revoked"]:
-            return None
-    return {
-        "id": None,
-        "username": None,
-        "email": None,
-        "role": "team",
-        "github_token": None,
-        "team_id": str(row["team_id"]),
-        "team_name": row["team_name"],
-    }
-
 
 async def list_tokens(user_id: str) -> list[dict]:
     pool = await db.get_pool()
