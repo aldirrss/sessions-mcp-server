@@ -16,11 +16,14 @@ from .store import (
 )
 from .models import (
     SessionWriteInput,
+    SessionTeamWriteInput,
     SessionReadInput,
     SessionAppendInput,
     SessionDeleteInput,
     SessionListInput,
+    SessionTeamListInput,
     SessionSearchInput,
+    SessionTeamSearchInput,
     SessionUpdateInput,
     NoteUpdateInput,
 )
@@ -48,10 +51,11 @@ def register(mcp: FastMCP) -> None:
     )
     async def session_write(params: SessionWriteInput) -> str:
         """
-        Create or overwrite a session context in the shared store.
+        Create or overwrite a personal session context in the shared store.
 
         Use this to save the current state of work so it can be resumed from
         Claude Web, Claude CLI, or VSCode. Overwrites context but preserves notes.
+        For team sessions use session_team_write instead.
 
         Args:
             params.session_id: Unique key for this session (e.g. 'feat-auth-dev').
@@ -67,15 +71,13 @@ def register(mcp: FastMCP) -> None:
                 params.context,
                 source=params.source,
                 tags=params.tags,
-                team=params.team,
             )
             action = "Updated" if session.get("notes") else "Created"
             tags_note = f" | tags: {', '.join(session['tags'])}" if session["tags"] else ""
-            team_note = f" | team: {params.team}" if params.team else ""
             return (
                 f"Session `{params.session_id}` {action.lower()}.\n"
                 f"**Title:** {session['title']}\n"
-                f"**Source:** {session['source']}{tags_note}{team_note}\n"
+                f"**Source:** {session['source']}{tags_note}\n"
                 f"**Updated:** {session['updated_at']}"
             )
         except Exception as e:
@@ -153,26 +155,25 @@ def register(mcp: FastMCP) -> None:
     )
     async def session_list(params: SessionListInput) -> str:
         """
-        List all sessions in the shared store.
+        List personal sessions in the shared store.
 
         Pinned sessions appear first. Archived sessions are hidden by default.
+        For team sessions use session_team_list instead.
 
         Args:
             params.tag: Optional tag to filter by. Omit to list all.
             params.show_archived: Include archived sessions (default false).
         """
         try:
-            sessions = await list_sessions(tag=params.tag, show_archived=params.show_archived, team=params.team)
+            sessions = await list_sessions(tag=params.tag, show_archived=params.show_archived)
             stats = await get_stats()
 
             if not sessions:
                 filter_note = f" with tag '{params.tag}'" if params.tag else ""
-                scope_note = f" in team '{params.team}'" if params.team else " (personal)"
-                return f"No sessions found{filter_note}{scope_note}."
+                return f"No personal sessions found{filter_note}."
 
-            scope_label = f"team '{params.team}'" if params.team else "personal"
             lines = [
-                f"## Sessions — {scope_label} ({len(sessions)} shown, {stats['total_sessions']} total)",
+                f"## Sessions — personal ({len(sessions)} shown, {stats['total_sessions']} total)",
                 f"*Last updated: {stats['last_updated']}*",
                 "",
                 "| ID | Title | Source | Tags | Notes | Flags | Updated |",
@@ -351,17 +352,156 @@ def register(mcp: FastMCP) -> None:
     )
     async def session_search(params: SessionSearchInput) -> str:
         """
-        Search sessions by keyword across title, context, notes, and tags.
+        Search personal sessions by keyword across title, context, notes, and tags.
+        For team sessions use session_team_search instead.
 
         Args:
             params.query: Keyword to search for.
         """
         try:
-            results = await search_sessions(params.query, team=params.team)
+            results = await search_sessions(params.query)
             if not results:
-                return f"No sessions found matching '{params.query}'."
+                return f"No personal sessions found matching '{params.query}'."
 
             lines = [f"## Search results for '{params.query}' ({len(results)} found)", ""]
+            for r in results:
+                lines.append(f"### `{r['session_id']}` — {r['title']}")
+                lines.append(f"*Updated: {r['updated_at']}*")
+                lines.append(f"> {r['snippet']}")
+                lines.append("")
+            return "\n".join(lines)
+        except Exception as e:
+            return _error(str(e))
+
+    # -----------------------------------------------------------------------
+    # Team sessions
+    # -----------------------------------------------------------------------
+
+    @mcp.tool(
+        name="session_team_write",
+        annotations={
+            "title": "Write Team Session Context",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )
+    async def session_team_write(params: SessionTeamWriteInput) -> str:
+        """
+        Create or overwrite a team session context in the shared store.
+
+        Use this to save work that belongs to a team so all team members can
+        read and resume it from Claude Web, Claude CLI, or VSCode.
+        For personal sessions use session_write instead.
+
+        Args:
+            params.session_id: Unique key for this session (e.g. 'sprint-42').
+            params.title: Short human-readable title.
+            params.context: Full context — goals, current state, decisions, next steps.
+            params.team: Team name slug (e.g. 'mazuta-erp'). Must be a member.
+            params.source: Origin client ('web', 'cli', 'vscode').
+            params.tags: Optional tags for filtering.
+        """
+        try:
+            session = await write_session(
+                params.session_id,
+                params.title,
+                params.context,
+                source=params.source,
+                tags=params.tags,
+                team=params.team,
+            )
+            action = "Updated" if session.get("notes") else "Created"
+            tags_note = f" | tags: {', '.join(session['tags'])}" if session["tags"] else ""
+            return (
+                f"Team session `{params.session_id}` {action.lower()} in team `{params.team}`.\n"
+                f"**Title:** {session['title']}\n"
+                f"**Source:** {session['source']}{tags_note}\n"
+                f"**Updated:** {session['updated_at']}"
+            )
+        except Exception as e:
+            return _error(str(e))
+
+    @mcp.tool(
+        name="session_team_list",
+        annotations={
+            "title": "List Team Sessions",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )
+    async def session_team_list(params: SessionTeamListInput) -> str:
+        """
+        List all sessions belonging to a team.
+
+        Pinned sessions appear first. Archived sessions are hidden by default.
+        For personal sessions use session_list instead.
+
+        Args:
+            params.team: Team name slug (e.g. 'mazuta-erp'). Must be a member.
+            params.tag: Optional tag to filter by. Omit to list all.
+            params.show_archived: Include archived sessions (default false).
+        """
+        try:
+            sessions = await list_sessions(tag=params.tag, show_archived=params.show_archived, team=params.team)
+            stats = await get_stats()
+
+            if not sessions:
+                filter_note = f" with tag '{params.tag}'" if params.tag else ""
+                return f"No sessions found{filter_note} in team '{params.team}'."
+
+            lines = [
+                f"## Sessions — team '{params.team}' ({len(sessions)} shown, {stats['total_sessions']} total)",
+                f"*Last updated: {stats['last_updated']}*",
+                "",
+                "| ID | Title | Source | Tags | Notes | Flags | Updated |",
+                "|----|-------|--------|------|-------|-------|---------|",
+            ]
+            for s in sessions:
+                tags = ", ".join(s["tags"]) or "-"
+                flags = " ".join(filter(None, [
+                    "📌" if s.get("pinned") else "",
+                    "🗄" if s.get("archived") else "",
+                ]))
+                lines.append(
+                    f"| `{s['session_id']}` | {s['title']} | {s['source']} "
+                    f"| {tags} | {s['notes_count']} | {flags or '-'} | {s['updated_at'][:10]} |"
+                )
+            return "\n".join(lines)
+        except Exception as e:
+            return _error(str(e))
+
+    @mcp.tool(
+        name="session_team_search",
+        annotations={
+            "title": "Search Team Sessions",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )
+    async def session_team_search(params: SessionTeamSearchInput) -> str:
+        """
+        Search a team's sessions by keyword across title, context, notes, and tags.
+        For personal sessions use session_search instead.
+
+        Args:
+            params.query: Keyword to search for.
+            params.team: Team name slug to scope the search to. Must be a member.
+        """
+        try:
+            results = await search_sessions(params.query, team=params.team)
+            if not results:
+                return f"No sessions found matching '{params.query}' in team '{params.team}'."
+
+            lines = [
+                f"## Search results for '{params.query}' in team '{params.team}' ({len(results)} found)",
+                "",
+            ]
             for r in results:
                 lines.append(f"### `{r['session_id']}` — {r['title']}")
                 lines.append(f"*Updated: {r['updated_at']}*")

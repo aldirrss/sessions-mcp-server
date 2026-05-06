@@ -72,11 +72,19 @@ use `skill_search` or `skill_list` instead of relying on memory.
 
 ## MCP Server Tools Reference
 
-18 tools total — focused on what's actually useful in a conversation.
+21 tools total — focused on what's actually useful in a conversation.
 
-### Sessions (6)
+### Personal Sessions (6)
 `session_write`, `session_read`, `session_list`, `session_append`,
 `session_delete`, `session_search`
+
+### Team Sessions (3)
+`session_team_write`, `session_team_list`, `session_team_search`
+
+- Use `session_team_write` when saving work that belongs to a team.
+- Always pass `team` (team name slug, e.g. `'mazuta-erp'`) — it is required.
+- `session_read`, `session_append`, `session_delete`, `session_update` work on both
+  personal and team sessions by `session_id` alone (no team param needed for reads).
 
 ### Session & Note Lifecycle (2)
 `session_update(action)`, `note_update(action)`

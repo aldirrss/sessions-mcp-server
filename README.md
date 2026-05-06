@@ -327,30 +327,43 @@ curl -s -X POST "https://mcp.example.com/mcp" \
 
 ## Tools Reference
 
-18 tools across 5 categories. Admin operations (token management, user management, skill
+21 tools across 5 categories. Admin operations (token management, user management, skill
 authoring) are handled exclusively via the web panel — no MCP tools required.
 
-### Sessions (8 tools)
+### Personal Sessions (6 tools)
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `session_write` | write | Create or overwrite a session context |
+| `session_write` | write | Create or overwrite a personal session context |
 | `session_read` | read | Full context + pinned notes + all notes |
-| `session_list` | read | List sessions (pinned first, archived hidden by default) |
+| `session_list` | read | List personal sessions (pinned first, archived hidden by default) |
 | `session_append` | write | Append a timestamped note to a session |
 | `session_delete` | write | Permanently delete a session and its notes |
-| `session_search` | read | Full-text search across sessions and notes |
+| `session_search` | read | Full-text search across personal sessions and notes |
+
+### Team Sessions (3 tools)
+
+| Tool | Type | Description |
+|------|------|-------------|
+| `session_team_write` | write | Create or overwrite a session in a team namespace |
+| `session_team_list` | read | List sessions belonging to a team |
+| `session_team_search` | read | Full-text search across a team's sessions |
+
+`team` is a **required** field in all three team tools. `session_read`, `session_append`,
+`session_delete`, and `session_update` work on both personal and team sessions by
+`session_id` alone — no `team` param needed for read/modify operations.
+
+```
+session_team_write(session_id="sprint-42", title="...", context="...", team="mazuta-erp")
+session_team_list(team="mazuta-erp")
+```
+
+### Session & Note Lifecycle (2 tools)
+
+| Tool | Type | Description |
+|------|------|-------------|
 | `session_update` | write | Lifecycle actions: `pin`, `unpin`, `archive`, `restore` |
 | `note_update` | write | Pin or unpin a note: `pin`, `unpin` |
-
-**Team sessions:** pass `team="team-name"` to `session_write`, `session_list`, and
-`session_search` to scope the operation to a team namespace. The user must be a member
-of the team. Without `team`, operations apply to personal sessions only.
-
-```
-session_write(session_id="feat-auth", title="...", context="...", team="my-team")
-session_list(team="my-team")
-```
 
 > **User isolation:** each authenticated user sees only their own personal sessions.
 > Team sessions are visible to all members of that team.

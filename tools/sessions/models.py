@@ -45,11 +45,48 @@ class SessionWriteInput(BaseModel):
         default=None,
         description="Optional list of tags for filtering (e.g. ['odoo', 'backend']).",
     )
-    team: Optional[str] = Field(
-        default=None,
-        description="Team name to save this session under (e.g. 'mazuta-erp'). "
-                    "You must be a member. Omit to save as a personal session.",
+
+    @field_validator("session_id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        return _validate_session_id(v)
+
+
+class SessionTeamWriteInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    session_id: str = Field(
+        ...,
+        description="Unique session identifier (letters, digits, hyphens, underscores). "
+                    "Example: 'sprint-42', 'odoo-refactor-2026'.",
+        min_length=1,
+        max_length=100,
+    )
+    title: str = Field(
+        ...,
+        description="Short human-readable title for the session.",
+        min_length=1,
+        max_length=200,
+    )
+    context: str = Field(
+        ...,
+        description="Full context to store: current state, goals, decisions, next steps.",
+        min_length=1,
+    )
+    team: str = Field(
+        ...,
+        description="Team name slug this session belongs to (e.g. 'mazuta-erp'). "
+                    "You must be a member of this team.",
+        min_length=1,
         max_length=80,
+    )
+    source: str = Field(
+        default="unknown",
+        description="Origin client: 'web', 'cli', 'vscode', or any identifier.",
+        max_length=50,
+    )
+    tags: Optional[list[str]] = Field(
+        default=None,
+        description="Optional list of tags for filtering (e.g. ['odoo', 'backend']).",
     )
 
     @field_validator("session_id")
@@ -106,11 +143,21 @@ class SessionListInput(BaseModel):
         default=False,
         description="Include archived sessions in results (default false).",
     )
-    team: Optional[str] = Field(
-        default=None,
-        description="Team name to list sessions from (e.g. 'mazuta-erp'). "
-                    "Omit to list your personal sessions.",
+
+
+class SessionTeamListInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    team: str = Field(
+        ...,
+        description="Team name slug to list sessions from (e.g. 'mazuta-erp'). "
+                    "You must be a member of this team.",
+        min_length=1,
         max_length=80,
+    )
+    tag: Optional[str] = Field(default=None, description="Filter sessions by tag. Omit to list all.")
+    show_archived: bool = Field(
+        default=False,
+        description="Include archived sessions in results (default false).",
     )
 
 
@@ -120,9 +167,19 @@ class SessionSearchInput(BaseModel):
         ..., description="Keyword to search across title, context, notes, and tags.",
         min_length=1,
     )
-    team: Optional[str] = Field(
-        default=None,
-        description="Team name to scope the search to. Omit to search personal sessions.",
+
+
+class SessionTeamSearchInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    query: str = Field(
+        ..., description="Keyword to search across title, context, notes, and tags.",
+        min_length=1,
+    )
+    team: str = Field(
+        ...,
+        description="Team name slug to scope the search to (e.g. 'mazuta-erp'). "
+                    "You must be a member of this team.",
+        min_length=1,
         max_length=80,
     )
 
