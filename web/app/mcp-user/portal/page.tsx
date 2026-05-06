@@ -115,11 +115,11 @@ export default function PortalPage() {
             </div>
           </div>
           <nav className="flex items-center gap-1">
-            <Link href="/panel/mcp-user/portal"
+            <Link href="/mcp-user/portal"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-100 text-gray-900 rounded-lg font-medium">
               <Key className="w-3.5 h-3.5" /> Tokens
             </Link>
-            <Link href="/panel/mcp-user/skills"
+            <Link href="/mcp-user/skills"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
               <BookOpen className="w-3.5 h-3.5" /> Skills
             </Link>

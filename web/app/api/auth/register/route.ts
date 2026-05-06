@@ -20,6 +20,13 @@ export async function POST(req: NextRequest) {
   const emailClean = parsed.data.email.trim().toLowerCase()
   const { password } = parsed.data
 
+  const [blacklisted] = await sql`
+    SELECT id FROM email_blacklist WHERE email = ${emailClean}
+  `
+  if (blacklisted) {
+    return NextResponse.json({ error: 'This email address is not allowed to register.' }, { status: 403 })
+  }
+
   const passwordHash = await bcrypt.hash(password, 12)
 
   let user: { id: string; username: string } | null = null

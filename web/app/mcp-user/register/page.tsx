@@ -83,7 +83,7 @@ export default function RegisterPage() {
                     <span className="text-xs font-semibold text-gray-600">Claude Code CLI</span>
                   </div>
                   <code className="text-xs text-gray-700 font-mono break-all">
-                    claude mcp add lm-mcp-ai --transport http --url {mcpUrl} --header &quot;Authorization: Bearer {result.token}&quot;
+                    claude mcp add sessions-mcp-server --transport http --url {mcpUrl} --header &quot;Authorization: Bearer {result.token}&quot;
                   </code>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
@@ -94,7 +94,7 @@ export default function RegisterPage() {
                   <code className="text-xs text-gray-700 font-mono whitespace-pre">
 {`{
   "mcpServers": {
-    "lm-mcp-ai": {
+    "sessions-mcp-server": {
       "type": "http",
       "url": "${mcpUrl}",
       "headers": { "Authorization": "Bearer ${result.token}" }
@@ -107,11 +107,11 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Link href="/panel/mcp-user/portal"
+              <Link href="/mcp-user/portal"
                 className="flex-1 text-center py-2.5 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
                 Go to Portal
               </Link>
-              <Link href="/panel/mcp-admin/login"
+              <Link href="/mcp-admin/login"
                 className="flex-1 text-center py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 Admin Panel
               </Link>
@@ -130,7 +130,7 @@ export default function RegisterPage() {
             <UserPlus className="w-6 h-6 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Create Account</h1>
-          <p className="text-sm text-gray-500 mt-1">Get access to lm-mcp-ai</p>
+          <p className="text-sm text-gray-500 mt-1">Get access to Sessions MCP Server</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
@@ -172,7 +172,7 @@ export default function RegisterPage() {
 
           <p className="text-center text-xs text-gray-500">
             Already have an account?{' '}
-            <Link href="/panel/mcp-user/login" className="text-blue-600 hover:underline">Sign in</Link>
+            <Link href="/mcp-user/login" className="text-blue-600 hover:underline">Sign in</Link>
           </p>
         </form>
       </div>

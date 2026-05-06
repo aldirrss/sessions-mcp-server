@@ -16,6 +16,11 @@ export const CreateTokenSchema = z.object({
   expires_days: z.number().int().min(1).max(3650).nullable().optional(),
 })
 
+export const BlacklistEmailSchema = z.object({
+  email: z.email(),
+  reason: z.string().max(500).optional(),
+})
+
 export const PatchUserSchema = z.object({
   role: z.enum(['user', 'admin']).optional(),
   is_active: z.boolean().optional(),

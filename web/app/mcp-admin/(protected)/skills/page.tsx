@@ -76,14 +76,14 @@ export default function SkillsPage() {
   const totalPages = Math.ceil(total / 20)
 
   return (
-    <div className="max-w-5xl space-y-5">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Skills</h1>
           <p className="text-sm text-gray-500 mt-0.5">{total} skills in library</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/panel/mcp-admin/skills/import"
+          <Link href="/mcp-admin/skills/import"
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">
             <Upload className="w-4 h-4" /> Import .md
           </Link>
