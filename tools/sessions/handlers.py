@@ -71,13 +71,15 @@ def register(mcp: FastMCP) -> None:
                 params.context,
                 source=params.source,
                 tags=params.tags,
+                team=params.team,
             )
             action = "Updated" if session.get("notes") else "Created"
             tags_note = f" | tags: {', '.join(session['tags'])}" if session["tags"] else ""
+            team_note = f" | team: {params.team}" if params.team else ""
             return (
                 f"Session `{params.session_id}` {action.lower()}.\n"
                 f"**Title:** {session['title']}\n"
-                f"**Source:** {session['source']}{tags_note}\n"
+                f"**Source:** {session['source']}{tags_note}{team_note}\n"
                 f"**Updated:** {session['updated_at']}"
             )
         except Exception as e:
@@ -164,15 +166,17 @@ def register(mcp: FastMCP) -> None:
             params.show_archived: Include archived sessions (default false).
         """
         try:
-            sessions = await list_sessions(tag=params.tag, show_archived=params.show_archived)
+            sessions = await list_sessions(tag=params.tag, show_archived=params.show_archived, team=params.team)
             stats = await get_stats()
 
             if not sessions:
                 filter_note = f" with tag '{params.tag}'" if params.tag else ""
-                return f"No sessions found{filter_note}."
+                scope_note = f" in team '{params.team}'" if params.team else " (personal)"
+                return f"No sessions found{filter_note}{scope_note}."
 
+            scope_label = f"team '{params.team}'" if params.team else "personal"
             lines = [
-                f"## Sessions ({stats['total_sessions']} total, {stats['total_notes']} notes)",
+                f"## Sessions — {scope_label} ({len(sessions)} shown, {stats['total_sessions']} total)",
                 f"*Last updated: {stats['last_updated']}*",
                 "",
                 "| ID | Title | Source | Tags | Notes | Flags | Updated |",
@@ -480,7 +484,7 @@ def register(mcp: FastMCP) -> None:
             params.query: Keyword to search for.
         """
         try:
-            results = await search_sessions(params.query)
+            results = await search_sessions(params.query, team=params.team)
             if not results:
                 return f"No sessions found matching '{params.query}'."
 

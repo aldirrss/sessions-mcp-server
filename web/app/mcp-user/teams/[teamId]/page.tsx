@@ -300,13 +300,14 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
           {/* Tokens */}
           {tab === 'tokens' && (
             <div>
-              {isAdmin && (
-                <div className="p-4 border-b border-gray-100">
-                  <button onClick={createToken} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+              <div className={`flex items-center justify-between gap-3 p-4 border-b border-gray-100 ${!isAdmin ? 'py-3' : ''}`}>
+                <p className="text-xs text-gray-400">Sessions created with this token are shared with all team members.</p>
+                {isAdmin && (
+                  <button onClick={createToken} className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
                     <Plus className="w-4 h-4" /> New Token
                   </button>
-                </div>
-              )}
+                )}
+              </div>
               {tokens.length === 0 ? (
                 <div className="p-8 text-center text-sm text-gray-400">No tokens yet.</div>
               ) : (

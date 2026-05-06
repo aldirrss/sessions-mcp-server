@@ -136,7 +136,10 @@ export default function PortalPage() {
         {/* Active tokens */}
         <div className="bg-white rounded-2xl border border-gray-200">
           <div className="p-4 md:p-5 flex items-center justify-between border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-900">Active Tokens ({activeTokens.length})</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Active Tokens ({activeTokens.length})</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Sessions created with this token are private — only you can access them.</p>
+            </div>
             <button onClick={() => setShowCreate(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
               <Plus className="w-4 h-4" />
