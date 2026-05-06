@@ -270,6 +270,17 @@ _DDL_STEPS = [
     "CREATE INDEX IF NOT EXISTS idx_session_users_user    ON session_users (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_owner        ON sessions (owner_id)",
 
+    # Email blacklist — specific emails blocked from registering
+    """
+    CREATE TABLE IF NOT EXISTS email_blacklist (
+        id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        email      TEXT        UNIQUE NOT NULL,
+        reason     TEXT        NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_email_blacklist_email ON email_blacklist (email)",
+
     # -----------------------------------------------------------------------
     # Skills library
     # -----------------------------------------------------------------------
