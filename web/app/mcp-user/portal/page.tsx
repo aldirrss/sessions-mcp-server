@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2, Github, BookOpen } from 'lucide-react'
+import { Plus, Trash2, Copy, Check, Key, LogOut, Terminal, Code2, Github, BookOpen, Users } from 'lucide-react'
 import Link from 'next/link'
 
 import { API_BASE } from '@/lib/config'
@@ -122,6 +122,10 @@ export default function PortalPage() {
             <Link href="/mcp-user/skills"
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
               <BookOpen className="w-3.5 h-3.5" /> Skills
+            </Link>
+            <Link href="/mcp-user/portal/teams"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+              <Users className="w-3.5 h-3.5" /> Teams
             </Link>
           </nav>
         </div>

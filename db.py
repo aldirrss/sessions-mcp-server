@@ -270,6 +270,74 @@ _DDL_STEPS = [
     "CREATE INDEX IF NOT EXISTS idx_session_users_user    ON session_users (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_owner        ON sessions (owner_id)",
 
+    # -----------------------------------------------------------------------
+    # Teams — shared workspaces with team-scoped sessions and tokens
+    # -----------------------------------------------------------------------
+
+    """
+    CREATE TABLE IF NOT EXISTS teams (
+        id         UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+        name       TEXT  UNIQUE NOT NULL,
+        created_by UUID  NOT NULL REFERENCES users(id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS team_members (
+        team_id    UUID  NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        user_id    UUID  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role       TEXT  NOT NULL DEFAULT 'member',
+        joined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (team_id, user_id)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS team_tokens (
+        id          UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id     UUID  NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        token_hash  TEXT  UNIQUE NOT NULL,
+        name        TEXT  NOT NULL DEFAULT 'Default',
+        created_by  UUID  NOT NULL REFERENCES users(id),
+        revoked     BOOLEAN NOT NULL DEFAULT false,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS team_requests (
+        id           UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+        requested_by UUID  NOT NULL REFERENCES users(id),
+        team_name    TEXT  NOT NULL,
+        reason       TEXT  NOT NULL DEFAULT '',
+        status       TEXT  NOT NULL DEFAULT 'pending',
+        reviewed_by  UUID  REFERENCES users(id),
+        reviewed_at  TIMESTAMPTZ,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS team_skills (
+        team_id    UUID  NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        skill_slug TEXT  NOT NULL REFERENCES skills(slug) ON DELETE CASCADE,
+        added_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (team_id, skill_slug)
+    )
+    """,
+
+    # team_id on sessions — NULL = personal session, non-NULL = team session
+    "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE CASCADE",
+
+    "CREATE INDEX IF NOT EXISTS idx_team_members_team   ON team_members (team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_team_members_user   ON team_members (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_team_tokens_hash    ON team_tokens (token_hash)",
+    "CREATE INDEX IF NOT EXISTS idx_team_tokens_team    ON team_tokens (team_id)",
+    "CREATE INDEX IF NOT EXISTS idx_team_requests_user  ON team_requests (requested_by)",
+    "CREATE INDEX IF NOT EXISTS idx_team_requests_status ON team_requests (status)",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_team       ON sessions (team_id)",
+
     # Email blacklist — specific emails blocked from registering
     """
     CREATE TABLE IF NOT EXISTS email_blacklist (

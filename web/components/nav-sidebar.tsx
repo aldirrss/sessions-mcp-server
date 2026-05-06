@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, MessageSquare, BookOpen, Settings2, Users, LogOut, Menu, X, ShieldBan } from 'lucide-react'
+import { LayoutDashboard, MessageSquare, BookOpen, Settings2, Users, LogOut, Menu, X, ShieldBan, UsersRound } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 const navItems = [
@@ -13,6 +13,7 @@ const navItems = [
   { href: '/mcp-admin/config', label: 'Config', icon: Settings2 },
   { href: '/mcp-admin/users', label: 'Users', icon: Users },
   { href: '/mcp-admin/blacklist', label: 'Blacklist', icon: ShieldBan },
+  { href: '/mcp-admin/team-requests', label: 'Teams', icon: UsersRound },
 ]
 
 export default function NavSidebar() {
