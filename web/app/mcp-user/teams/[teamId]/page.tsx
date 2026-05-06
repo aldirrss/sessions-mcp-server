@@ -156,7 +156,7 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
                         <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">{new Date(s.updated_at).toLocaleDateString()}</td>
                         {isAdmin && (
                           <td className="px-4 py-3 text-right">
-                            <button onClick={() => deleteSession(s.session_id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            <button onClick={e => { e.stopPropagation(); deleteSession(s.session_id) }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </td>
@@ -291,7 +291,7 @@ export default function TeamAdminPage({ params }: { params: Promise<{ teamId: st
                           <td className="px-4 py-3 text-blue-600 text-xs hover:underline">{s.summary || s.name}</td>
                           {isAdmin && (
                             <td className="px-4 py-3 text-right">
-                              <button onClick={() => removeSkill(s.slug)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                              <button onClick={e => { e.stopPropagation(); removeSkill(s.slug) }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </td>

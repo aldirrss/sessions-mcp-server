@@ -3,9 +3,12 @@
 import { use, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Pin, Trash2, Plus } from 'lucide-react'
+import { ArrowLeft, Pin, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { API_BASE } from '@/lib/config'
 import UserPortalHeader from '@/components/user-portal-header'
+import NoteCard from '@/components/note-card'
+
+const NOTES_PER_PAGE = 10
 
 type Note = { id: number; content: string; source: string; pinned: boolean; created_at: string }
 type Session = {
@@ -23,6 +26,7 @@ export default function TeamSessionDetailPage({ params }: { params: Promise<{ te
   const [addingNote, setAddingNote] = useState(false)
   const [pinning, setPinning] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [notePage, setNotePage] = useState(1)
 
   const fetchSession = useCallback(async () => {
     const res = await fetch(`${API_BASE}/teams/${teamId}/sessions/${sessionId}`)
@@ -63,6 +67,7 @@ export default function TeamSessionDetailPage({ params }: { params: Promise<{ te
     })
     setNoteContent('')
     setAddingNote(false)
+    setNotePage(999)
     fetchSession()
   }
 
@@ -82,6 +87,9 @@ export default function TeamSessionDetailPage({ params }: { params: Promise<{ te
   const isAdmin = session.viewer_role === 'admin'
   const pinnedNotes = session.notes.filter(n => n.pinned)
   const regularNotes = session.notes.filter(n => !n.pinned)
+  const totalPages = Math.max(1, Math.ceil(regularNotes.length / NOTES_PER_PAGE))
+  const currentPage = Math.min(notePage, totalPages)
+  const paginatedNotes = regularNotes.slice((currentPage - 1) * NOTES_PER_PAGE, currentPage * NOTES_PER_PAGE)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -138,10 +146,7 @@ export default function TeamSessionDetailPage({ params }: { params: Promise<{ te
             </h2>
             <div className="space-y-2">
               {pinnedNotes.map(n => (
-                <div key={n.id} className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap">{n.content}</p>
-                  <p className="text-xs text-gray-400 mt-1.5">{n.source} · {new Date(n.created_at).toLocaleString()}</p>
-                </div>
+                <NoteCard key={n.id} {...n} pinned />
               ))}
             </div>
           </div>
@@ -156,14 +161,31 @@ export default function TeamSessionDetailPage({ params }: { params: Promise<{ te
           {regularNotes.length === 0 && pinnedNotes.length === 0 ? (
             <p className="text-sm text-gray-400">No notes yet.</p>
           ) : regularNotes.length > 0 ? (
-            <div className="space-y-2">
-              {regularNotes.map(n => (
-                <div key={n.id} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap">{n.content}</p>
-                  <p className="text-xs text-gray-400 mt-1.5">{n.source} · {new Date(n.created_at).toLocaleString()}</p>
+            <>
+              <div className="space-y-2">
+                {paginatedNotes.map(n => (
+                  <NoteCard key={n.id} {...n} />
+                ))}
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <p className="text-xs text-gray-400">
+                    {(currentPage - 1) * NOTES_PER_PAGE + 1}–{Math.min(currentPage * NOTES_PER_PAGE, regularNotes.length)} of {regularNotes.length} notes
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setNotePage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors">
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-xs text-gray-500 px-1">{currentPage} / {totalPages}</span>
+                    <button onClick={() => setNotePage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 transition-colors">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           ) : null}
 
           {isAdmin && (
