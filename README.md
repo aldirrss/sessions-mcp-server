@@ -1,5 +1,13 @@
 # Sessions MCP Server
 
+> [!WARNING]
+> **This repository is deprecated and archived.**
+> Active development has moved to the new repository:
+> **[https://github.com/aldirrss/session-ai-mcp](https://github.com/aldirrss/session-ai-mcp)**
+> Please use the new repository for the latest updates, bug fixes, and contributions.
+
+---
+
 A self-hosted **MCP (Model Context Protocol) server** running in Docker on a VPS.
 Connects **claude.ai Web**, **Claude Code CLI**, and **VSCode** to a shared backend —
 providing persistent session memory, a skill library, GitHub integration, dynamic
